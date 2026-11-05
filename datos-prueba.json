@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "ts": "2026-11-04T09:00:00.000Z",
+  "alumnos": [
+    { "id": "a01", "nombre": "Lucía",   "icono": "pets",           "puntos": 190 },
+    { "id": "a02", "nombre": "Mateo",   "icono": "rocket_launch",  "puntos": 60 },
+    { "id": "a03", "nombre": "Sofía",   "icono": "sailing",        "puntos": 270 },
+    { "id": "a04", "nombre": "Hugo",    "icono": "park",           "puntos": 120 },
+    { "id": "a05", "nombre": "Martina", "icono": "sports_soccer",  "puntos": 30 },
+    { "id": "a06", "nombre": "Daniel",  "icono": "music_note",     "puntos": 150 },
+    { "id": "a07", "nombre": "Valeria", "icono": "palette",        "puntos": 310 },
+    { "id": "a08", "nombre": "Pablo",   "icono": "bolt",           "puntos": 90 },
+    { "id": "a09", "nombre": "Carla",   "icono": "local_florist",  "puntos": 240 },
+    { "id": "a10", "nombre": "Álvaro",  "icono": "wb_sunny",       "puntos": 0 },
+    { "id": "a11", "nombre": "Noa",     "icono": "water_drop",     "puntos": 150 }
+  ],
+  "premios": [
+    { "id": "p01", "nombre": "Algodoo",                "coste": 120, "icono": "science" },
+    { "id": "p02", "nombre": "Scratch",                "coste": 160, "icono": "code" },
+    { "id": "p03", "nombre": "Megaman Maker",          "coste": 180, "icono": "sports_esports" },
+    { "id": "p04", "nombre": "Piskel",                 "coste": 200, "icono": "brush" },
+    { "id": "p05", "nombre": "Lego",                   "coste": 240, "icono": "extension" },
+    { "id": "p06", "nombre": "Subir de nivel en Lego", "coste": 280, "icono": "upgrade" }
+  ]
+}

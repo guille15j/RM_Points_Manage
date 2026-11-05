@@ -1,0 +1,160 @@
+/* =====================================================================
+   styles.css - Tokens de diseno y estilos base
+   =====================================================================
+   Dos perfiles, activados con una clase en <html>:
+
+   .theme-alumno   iPad. Pantalla comun para ninos de 1.o a 6.o de primaria, incluidos
+                   alumnos con TEA. Principios: tipografia grande y muy legible, pocos
+                   elementos por pantalla, contraste suave (sin blanco/negro puros),
+                   un unico color de acento, nada de rojo, sin animaciones, zonas
+                   tactiles grandes y posiciones siempre iguales.
+
+   .theme-profesor iPhone. Interfaz de trabajo: sobria, neutra, compacta y densa.
+                   Color solo para lo que informa (suma/resta/avisos).
+
+   Para retocar la paleta o los tamanos basta con cambiar las variables de este bloque.
+   Los colores son canales RGB separados por espacios para poder usar opacidad en Tailwind.
+   ===================================================================== */
+
+/* ---------- Perfil PROFESOR ---------- */
+html.theme-profesor {
+  --root-size: 15px;          /* 1rem = 15px: todo el perfil escala desde aqui */
+  --tap: 3rem;                /* zona tactil minima (45px) */
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+
+  --c-page: 244 244 245;
+  --c-surface: 255 255 255;
+  --c-surface-alt: 236 236 238;
+  --c-line: 220 220 224;
+  --c-ink: 24 24 27;
+  --c-ink-soft: 82 82 91;
+  --c-primary: 51 65 85;       /* pizarra: unico acento */
+  --c-primary-soft: 226 232 240;
+  --c-on-primary: 255 255 255;
+  --c-success: 21 128 61;
+  --c-success-soft: 220 252 231;
+  --c-danger: 185 28 28;
+  --c-danger-soft: 254 226 226;
+  --c-attention: 161 98 7;
+  --c-attention-soft: 254 243 199;
+}
+
+/* ---------- Perfil ALUMNO ---------- */
+html.theme-alumno {
+  --root-size: 20px;          /* 1rem = 20px */
+  --tap: 3.5rem;              /* zona tactil minima (70px) */
+  --radius: 1rem;
+  --radius-lg: 1.5rem;
+  --font-ui: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", sans-serif;
+
+  --c-page: 246 244 239;       /* crema suave, menos deslumbrante que el blanco */
+  --c-surface: 255 255 255;
+  --c-surface-alt: 236 233 225;
+  --c-line: 214 209 197;
+  --c-ink: 43 47 54;           /* gris carbon, no negro puro */
+  --c-ink-soft: 85 91 102;
+  --c-primary: 56 99 154;      /* azul sereno: unico acento */
+  --c-primary-soft: 226 235 246;
+  --c-on-primary: 255 255 255;
+  --c-success: 38 117 84;
+  --c-success-soft: 223 240 231;
+  --c-danger: 160 60 60;       /* casi no se usa en este perfil */
+  --c-danger-soft: 248 230 230;
+  --c-attention: 138 90 10;    /* avisos en ambar, nunca en rojo */
+  --c-attention-soft: 250 239 214;
+}
+
+/* ---------- Base ---------- */
+html {
+  font-size: var(--root-size, 16px);
+  background: rgb(var(--c-page));
+  font-family: var(--font-ui);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: rgb(var(--c-page));
+  color: rgb(var(--c-ink));
+  font-family: var(--font-ui);
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* iOS amplia la pagina si un input mide menos de 16px */
+input, select, textarea {
+  font-size: max(16px, 1rem);
+  -webkit-user-select: text;
+  user-select: text;
+}
+input[type="checkbox"] { accent-color: rgb(var(--c-primary)); }
+
+:focus-visible {
+  outline: 3px solid rgb(var(--c-primary));
+  outline-offset: 2px;
+}
+
+/* Sin animaciones: en el perfil alumno por diseno, en el resto si el sistema lo pide */
+html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Iconos (Material Symbols Rounded) ---------- */
+.icon {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  overflow: hidden;            /* si la fuente no carga, no se ensancha el diseno */
+  white-space: nowrap;
+  direction: ltr;
+  flex-shrink: 0;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+  -webkit-user-select: none;
+  user-select: none;
+}
+:where(.icon) { font-size: 1.5rem; }   /* :where => las utilidades text-* lo sobrescriben */
+.icon-fill { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
+
+/* ---------- Componentes ---------- */
+.pressable { transition: background-color .12s ease, border-color .12s ease, filter .12s ease; }
+.pressable:not(:disabled):active { filter: brightness(.93); }
+.pressable:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Rejillas que se adaptan al ancho (iPad vertical u horizontal) */
+.grid-fit { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--fit-min, 11rem), 1fr)); }
+.grid-fit-sm { --fit-min: 9rem; }
+.grid-fit-md { --fit-min: 11rem; }
+.grid-fit-lg { --fit-min: 14rem; }
+
+/* Hojas modales y dialogos */
+.sheet { position: fixed; inset: 0; z-index: 50; display: none; }
+.sheet.open { display: flex; }
+.sheet-bg { position: absolute; inset: 0; background: rgb(var(--c-ink) / .45); }
+.sheet-panel { position: relative; }
+html.theme-profesor .sheet-panel { animation: sheet-in .16s ease-out; }
+@keyframes sheet-in { from { transform: translateY(1.25rem); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Espacio inferior para que el dock del profesor no tape la lista */
+.has-dock { padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)); }
+
+::-webkit-scrollbar { width: 0; height: 0; }

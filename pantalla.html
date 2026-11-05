@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es" class="theme-alumno">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Clase">
+  <meta name="theme-color" content="#F6F4EF">
+  <title>Pantalla · Puntos de clase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400..600,0..1,0&display=block">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="tailwind-config.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="sticky top-0 z-30 bg-surface border-b border-line" style="padding-top: env(safe-area-inset-top)">
+    <div class="flex items-center gap-4 px-6 py-3">
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <span class="flex items-center justify-center w-12 h-12 rounded-ui bg-primary text-on-primary"><span class="icon icon-fill text-3xl">star</span></span>
+        <h1 class="hidden min-[900px]:block text-xl font-bold truncate">Puntos de clase</h1>
+      </div>
+      <nav id="tabs" class="flex gap-2" aria-label="Secciones"></nav>
+      <div id="status"></div>
+      <button id="btn-refresh" type="button" aria-label="Actualizar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft"><span class="icon text-3xl">sync</span></button>
+    </div>
+  </header>
+
+  <main id="main" class="px-6 py-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 2rem)"></main>
+
+  <!-- Confirmacion de canje -->
+  <div id="dlg" class="sheet items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    <div class="sheet-bg" data-close="dlg"></div>
+    <div id="dlg-body" class="sheet-panel w-full max-w-xl p-8 rounded-ui-lg bg-surface border border-line shadow-xl"></div>
+  </div>
+
+  <div id="toast-root" class="fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4 pointer-events-none" style="top: calc(env(safe-area-inset-top) + 5.5rem)"></div>
+
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+  <script src="ui.js"></script>
+  <script src="pantalla.js"></script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es" class="theme-profesor">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Profesor">
+  <meta name="theme-color" content="#FFFFFF">
+  <title>Profesor · Puntos de clase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400..600,0..1,0&display=block">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="tailwind-config.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Cabecera -->
+  <header class="sticky top-0 z-30 bg-surface border-b border-line" style="padding-top: env(safe-area-inset-top)">
+    <div class="flex items-center gap-2 pl-4 pr-1 h-tap">
+      <h1 class="flex-1 font-semibold">Puntos de clase</h1>
+      <div id="status"></div>
+      <button id="btn-refresh" type="button" aria-label="Actualizar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">sync</span></button>
+    </div>
+  </header>
+
+  <main class="px-3 pt-3 has-dock">
+    <div id="banner"></div>
+    <div class="flex items-center justify-between min-h-[2.75rem] pb-1">
+      <span id="selinfo" class="text-sm text-ink-soft"></span>
+      <span class="flex gap-1">
+        <button id="sel-all" type="button" class="pressable h-11 px-3 rounded-ui text-sm font-semibold text-primary">Todos</button>
+        <button id="sel-none" type="button" class="pressable h-11 px-3 rounded-ui text-sm font-semibold text-primary">Ninguno</button>
+      </span>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <!-- Barra de acciones (zona del pulgar) -->
+  <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
+    <div class="grid grid-cols-5 gap-2 mb-2">
+      <button type="button" data-q="-10" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
+      <button type="button" data-q="-5" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
+      <button type="button" data-q="5" class="pressable h-tap rounded-ui border border-line bg-surface text-success text-lg font-semibold">+5</button>
+      <button type="button" data-q="10" class="pressable h-tap rounded-ui border border-line bg-surface text-success text-lg font-semibold">+10</button>
+      <button type="button" data-q="reset" class="pressable h-tap flex flex-col items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="text-xs font-semibold leading-none">A cero</span></button>
+    </div>
+    <div class="flex gap-2">
+      <input id="custom" type="number" inputmode="numeric" pattern="[0-9]*" min="1" placeholder="Otro valor" aria-label="Otro valor"
+             class="min-w-0 flex-1 h-tap px-3 rounded-ui border border-line bg-page text-ink placeholder-ink-soft/70 outline-none focus:border-primary">
+      <button id="custom-sub" type="button" aria-label="Restar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui border border-line bg-surface text-danger"><span class="icon">remove</span></button>
+      <button id="custom-add" type="button" aria-label="Sumar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui border border-line bg-surface text-success"><span class="icon">add</span></button>
+      <button id="btn-cart" type="button" aria-label="Abrir carrito" class="pressable relative flex items-center justify-center w-tap h-tap rounded-ui bg-primary text-on-primary">
+        <span class="icon">shopping_cart</span>
+        <span id="cart-count" class="hidden absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 rounded-full border border-line bg-surface text-ink text-xs font-bold leading-5 text-center">0</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Hoja: carrito -->
+  <div id="sheet-cart" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Carrito de clase">
+    <div class="sheet-bg" data-close="sheet-cart"></div>
+    <div class="sheet-panel flex flex-col w-full max-h-[85dvh] bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Carrito de clase</h2>
+        <button type="button" data-close="sheet-cart" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <p class="px-4 pt-3 text-sm text-ink-soft">Nada se guarda hasta que pulses Enviar.</p>
+      <div id="cart-list" class="flex-1 overflow-y-auto px-3 py-3"></div>
+      <div class="px-3 pt-2 pb-3 border-t border-line">
+        <div class="flex gap-2">
+          <button id="cart-clear" type="button" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon">delete_sweep</span><span>Vaciar</span></button>
+          <button id="cart-send" type="button" class="pressable inline-flex flex-1 items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary font-semibold"></button>
+        </div>
+        <div id="cart-demo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hoja: editar movimiento -->
+  <div id="sheet-edit" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Editar movimiento">
+    <div class="sheet-bg" data-close="sheet-edit"></div>
+    <div id="edit-body" class="sheet-panel w-full p-4 space-y-3 bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)"></div>
+  </div>
+
+  <div id="toast-root" class="fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4 pointer-events-none" style="top: calc(env(safe-area-inset-top) + 3.75rem)"></div>
+
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+  <script src="ui.js"></script>
+  <script src="profesor.js"></script>
+</body>
+</html>

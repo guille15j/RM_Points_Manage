@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es" class="theme-profesor">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Puntos de clase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400..600,0..1,0&display=block">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="tailwind-config.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="flex items-center justify-center min-h-screen p-6">
+  <main class="w-full max-w-sm space-y-6">
+    <div>
+      <h1 class="text-xl font-semibold">Puntos de clase</h1>
+      <p class="text-sm text-ink-soft">Elige el dispositivo en el que estás.</p>
+    </div>
+    <nav class="space-y-3">
+      <a href="profesor.html" class="pressable flex items-center gap-3 p-4 rounded-ui-lg border border-line bg-surface">
+        <span class="icon text-3xl text-primary">smartphone</span>
+        <span class="flex-1"><span class="block font-semibold">Profesor</span><span class="block text-sm text-ink-soft">Gestión de puntos (iPhone)</span></span>
+        <span class="icon text-ink-soft">chevron_right</span>
+      </a>
+      <a href="pantalla.html" class="pressable flex items-center gap-3 p-4 rounded-ui-lg border border-line bg-surface">
+        <span class="icon text-3xl text-primary">tablet</span>
+        <span class="flex-1"><span class="block font-semibold">Pantalla de clase</span><span class="block text-sm text-ink-soft">Puntos y canjes (iPad)</span></span>
+        <span class="icon text-ink-soft">chevron_right</span>
+      </a>
+    </nav>
+    <p class="text-xs text-ink-soft">Sin configurar el backend, la app funciona en modo de prueba con datos-prueba.json.</p>
+  </main>
+</body>
+</html>
