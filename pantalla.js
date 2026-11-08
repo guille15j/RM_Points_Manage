@@ -201,60 +201,72 @@
   function RuleRow(r) {
     const tone = resolve(RULE_TONES, getRuleKind(r), 'suma');
     return `
-      <li class="flex items-center gap-4 px-5 py-3 min-h-tap">
-        <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full bg-surface-alt text-ink">${Icon(safeIcon(r.icono, 'rule'), 'text-3xl')}</span>
+      <li class="flex items-center gap-3 px-4 py-2.5 min-h-tap">
+        <span class="flex items-center justify-center shrink-0 w-11 h-11 rounded-full bg-surface-alt text-ink">${Icon(safeIcon(r.icono, 'rule'), 'text-3xl')}</span>
         <div class="flex-1 min-w-0">
-          <p class="text-xl font-bold">${esc(r.nombre)}</p>
-          ${renderNote(r.descripcion, 'text-ink-soft')}
+          <p class="text-lg font-bold leading-tight">${esc(r.nombre)}</p>
+          ${renderNote(r.descripcion, 'text-base leading-tight text-ink-soft')}
         </div>
-        <span class="shrink-0 px-4 py-1 rounded-full text-2xl font-bold tabular-nums ${tone.chip}">${tone.sign}${Math.abs(r.puntos)}</span>
+        <span class="shrink-0 px-3 py-0.5 rounded-full text-xl font-bold tabular-nums ${tone.chip}">${tone.sign}${Math.abs(r.puntos)}</span>
       </li>`;
   }
 
+  // Cada apartado tiene su propio color de cabecera: se distinguen de un vistazo
   const RULE_GROUPS = {
-    suma: { title: 'Lo que suma', icon: 'add_circle', filter: (r) => r.puntos >= 0 },
-    resta: { title: 'Lo que resta', icon: 'do_not_disturb_on', filter: (r) => r.puntos < 0 }
+    suma: { title: 'Lo que suma', icon: 'add_circle', head: 'bg-success-soft text-success', filter: (r) => r.puntos >= 0 },
+    resta: { title: 'Lo que resta', icon: 'do_not_disturb_on', head: 'bg-attention-soft text-attention', filter: (r) => r.puntos < 0 }
   };
   const RULE_GROUP_BODY = {
-    lleno: (rows) => `<ul class="rounded-ui-lg bg-surface border border-line divide-y divide-line overflow-hidden">${rows.map(RuleRow).join('')}</ul>`,
-    vacio: () => `<p class="px-5 py-4 rounded-ui-lg bg-surface border border-line text-ink-soft">Nada por ahora.</p>`
+    lleno: (rows) => `<ul class="divide-y divide-line">${rows.map(RuleRow).join('')}</ul>`,
+    vacio: () => `<p class="px-4 py-3 text-ink-soft">Nada por ahora.</p>`
   };
+  const sectionCard = (id, head, icon, title, body) => `
+    <section id="${id}" class="scroll-mt-28 overflow-hidden rounded-ui-lg bg-surface border border-line">
+      <h2 class="flex items-center gap-2 px-4 py-3 text-2xl font-bold ${head}">${Icon(icon, 'text-3xl')}${title}</h2>
+      ${body}
+    </section>`;
   function RuleGroup(key) {
     const g = RULE_GROUPS[key];
     const rows = S.reglas.filter(g.filter).sort((x, y) => Math.abs(y.puntos) - Math.abs(x.puntos) || x.nombre.localeCompare(y.nombre, 'es'));
-    return `
-      <section class="space-y-3">
-        <h2 class="flex items-center gap-2 text-2xl font-bold">${Icon(g.icon, 'text-3xl text-ink-soft')}${g.title}</h2>
-        ${resolve(RULE_GROUP_BODY, rows.length ? 'lleno' : 'vacio', 'vacio')(rows)}
-      </section>`;
+    return sectionCard('sec-' + key, g.head, g.icon, g.title, resolve(RULE_GROUP_BODY, rows.length ? 'lleno' : 'vacio', 'vacio')(rows));
   }
 
   function InfoRacha() {
     const c = S.config;
-    return `
-      <section class="flex items-start gap-4 p-5 rounded-ui-lg bg-surface border border-line">
-        <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full bg-attention-soft text-attention">${Icon('local_fire_department', 'text-3xl', true)}</span>
-        <div>
-          <h2 class="text-2xl font-bold">Racha</h2>
-          <p class="text-ink-soft">Cada clase en la que sumas puntos, tu racha crece. Cada ${c.rachaHito} clases seguidas ganas <strong class="text-ink">+${c.rachaBonus}</strong> puntos extra.</p>
-        </div>
-      </section>`;
+    return sectionCard('sec-racha', 'bg-attention-soft text-attention', 'local_fire_department', 'Racha',
+      `<p class="px-4 py-3 text-lg text-ink-soft">Cada clase en la que sumas puntos, tu racha crece. Cada ${c.rachaHito} clases seguidas ganas <strong class="text-ink">+${c.rachaBonus}</strong> puntos extra.</p>`);
   }
 
   const BADGE_LEGEND_BODY = {
-    lleno: () => `<ul class="rounded-ui-lg bg-surface border border-line divide-y divide-line overflow-hidden">${S.insignias
-      .map((i) => `<li class="flex items-center gap-4 px-5 py-3 min-h-tap">
-          <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full border border-line bg-surface text-primary">${Icon(safeIcon(i.icono, 'military_tech'), 'text-3xl')}</span>
-          <div class="flex-1 min-w-0"><p class="text-xl font-bold">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-ink-soft')}</div>
-        </li>`).join('')}</ul>`,
+    lleno: () => sectionCard('sec-insignias', 'bg-primary-soft text-primary', 'military_tech', 'Insignias',
+      `<ul class="divide-y divide-line">${S.insignias
+        .map((i) => `<li class="flex items-center gap-3 px-4 py-2.5 min-h-tap">
+          <span class="flex items-center justify-center shrink-0 w-11 h-11 rounded-full border border-line bg-surface text-primary">${Icon(safeIcon(i.icono, 'military_tech'), 'text-3xl')}</span>
+          <div class="flex-1 min-w-0"><p class="text-lg font-bold leading-tight">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-base leading-tight text-ink-soft')}</div>
+        </li>`).join('')}</ul>`),
     vacio: () => ''
   };
-  const BadgeLegend = () => S.insignias.length
-    ? `<section class="space-y-3"><h2 class="flex items-center gap-2 text-2xl font-bold">${Icon('military_tech', 'text-3xl text-ink-soft')}Insignias</h2>${resolve(BADGE_LEGEND_BODY, 'lleno', 'vacio')()}</section>`
-    : '';
+  const BadgeLegend = () => resolve(BADGE_LEGEND_BODY, S.insignias.length ? 'lleno' : 'vacio', 'vacio')();
+
+  // Indice: todos los apartados a la vista desde el principio; tocar uno lleva a su seccion
+  const SECTION_INDEX = [
+    { id: 'sec-suma', label: 'Suma', icon: 'add_circle', tone: 'bg-success-soft text-success', show: () => true },
+    { id: 'sec-resta', label: 'Resta', icon: 'do_not_disturb_on', tone: 'bg-attention-soft text-attention', show: () => true },
+    { id: 'sec-racha', label: 'Racha', icon: 'local_fire_department', tone: 'bg-attention-soft text-attention', show: () => true },
+    { id: 'sec-insignias', label: 'Insignias', icon: 'military_tech', tone: 'bg-primary-soft text-primary', show: () => S.insignias.length > 0 }
+  ];
+  const SectionIndex = () => `
+    <nav class="flex gap-3" aria-label="Apartados">
+      ${SECTION_INDEX.filter((s) => s.show()).map((s) => `<button type="button" data-goto="${s.id}" class="pressable flex flex-1 items-center justify-center gap-2 h-tap rounded-ui text-xl font-bold ${s.tone}">${Icon(s.icon, 'text-3xl')}<span>${s.label}</span></button>`).join('')}
+    </nav>`;
 
   const REGLAS_BODY = {
-    lleno: () => `<div class="max-w-3xl mx-auto space-y-8">${RuleGroup('suma')}${RuleGroup('resta')}${InfoRacha()}${BadgeLegend()}</div>`,
+    lleno: () => `
+      <div class="space-y-5">
+        ${SectionIndex()}
+        <div class="grid grid-cols-2 gap-5 items-start">${RuleGroup('suma')}${RuleGroup('resta')}</div>
+        <div class="grid grid-cols-2 gap-5 items-start">${InfoRacha()}${BadgeLegend()}</div>
+      </div>`,
     vacio: () => renderEmpty('sinReglas')
   };
   const ReglasPanel = () => resolve(REGLAS_BODY, S.reglas.length ? 'lleno' : 'vacio', 'vacio')();
@@ -584,6 +596,7 @@
     ['[data-co]', (el) => { custom.color = el.dataset.co; renderCustom(); }],
     ['[data-open-custom]', () => openCustom(S.sel)],
     ['[data-close]', (el) => closeSheet(el.dataset.close)],
+    ['[data-goto]', (el) => { const s = document.getElementById(el.dataset.goto); if (s) s.scrollIntoView({ block: 'start' }); }],
     ['[data-tab]', (el) => { S.tab = el.dataset.tab; persist(); render(); window.scrollTo(0, 0); }],
     ['[data-view]', (el) => { S.view = el.dataset.view; persist(); render(); }],
     ['[data-sel]', (el) => { S.sel = el.dataset.sel; render(); window.scrollTo(0, 0); }],
