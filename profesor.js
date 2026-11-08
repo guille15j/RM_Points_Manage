@@ -34,6 +34,8 @@
     reglas: saved.reglas || [],     // motivos frecuentes (pestana ReglasYPremios)
     insignias: saved.insignias || [],
     config: saved.config || { ruletaBonus: [] },
+    uso: saved.uso || {},           // veces que se ha usado cada motivo (ordena los favoritos del dock)
+    uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
     cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
     pending: saved.pending || null, // {id,sig}: batchId del ultimo intento, para reintentos idempotentes
     status: isDemo() ? 'demo' : 'off',
@@ -44,9 +46,10 @@
   let edit = null;                  // movimiento en edicion: {id, sign, value}
   let wheel = { phase: 'idle', pool: [], name: '', winner: null, bonus: 0 }; // ruleta
   let wheelTimer = null;
+  let mtab = 'suma';                // pestana de la hoja de motivos
 
   const $ = (s) => document.querySelector(s);
-  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, cart: S.cart, pending: S.pending });
+  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, uso: S.uso, cart: S.cart, pending: S.pending });
   const applyServer = (res) => { ['alumnos', 'reglas', 'insignias', 'config'].forEach((k) => { if (res[k]) S[k] = res[k]; }); };
   const findInsignia = (id) => S.insignias.find((i) => i.id === id);
   const randInt = (n) => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
@@ -220,18 +223,6 @@
   }
   const EDIT_FIELDS = { gain: EditDelta, loss: EditDelta, reset: EditReset, ruleta: EditFixed, insignia: EditFixed };
 
-  /* ---- Motivos frecuentes (botones de un toque; vienen de la hoja ReglasYPremios) ---- */
-  const MOTIVE_TONES = { suma: 'text-success', resta: 'text-danger' };
-  const getMotiveKind = (r) => (r.puntos >= 0 ? 'suma' : 'resta');
-  const motiveChip = (r) => `
-    <button type="button" data-motivo="${esc(r.id)}" class="pressable inline-flex items-center gap-1.5 shrink-0 h-11 px-3 rounded-ui border border-line bg-surface text-sm font-semibold whitespace-nowrap">
-      ${Icon(safeIcon(r.icono, 'rule'), 'text-xl text-ink-soft')}<span>${esc(r.nombre)}</span><span class="tabular-nums ${resolve(MOTIVE_TONES, getMotiveKind(r), 'suma')}">${fmt(r.puntos)}</span>
-    </button>`;
-  const MOTIVES = {
-    lista: (reglas) => reglas.map(motiveChip).join(''),
-    vacio: () => ''
-  };
-
   /* ---- Hoja de insignias ---- */
   const infoBox = (text) => `<p class="flex items-start gap-2 p-3 text-sm rounded-ui bg-surface-alt text-ink-soft">${Icon('info', 'text-xl')}<span>${text}</span></p>`;
   const BADGE_SHEET = {
@@ -249,6 +240,45 @@
     vacio: () => infoBox('No hay insignias en la pestaña ReglasYPremios.')
   };
   const getBadgeSheetKind = () => (!S.insignias.length ? 'vacio' : selected.size ? 'lista' : 'sinSeleccion');
+
+  /* ---- Motivos: 3 mas usados en el dock + hoja con todos (sin deslizar) ---- */
+  const MOTIVE_TONES = { suma: 'text-success', resta: 'text-danger' };
+  const getMotiveKind = (r) => (r.puntos >= 0 ? 'suma' : 'resta');
+  const motiveTone = (r) => resolve(MOTIVE_TONES, getMotiveKind(r), 'suma');
+  const dockChip = (r) => `
+    <button type="button" data-motivo="${esc(r.id)}" class="pressable flex flex-col items-center justify-center min-w-0 h-12 px-1 rounded-ui border border-line bg-surface leading-tight">
+      <span class="w-full text-xs font-medium text-center truncate">${esc(r.nombre)}</span>
+      <span class="text-sm font-bold tabular-nums ${motiveTone(r)}">${fmt(r.puntos)}</span>
+    </button>`;
+  const MOTIVES_ALL_BUTTON = `
+    <button type="button" data-motivos-open class="pressable flex flex-col items-center justify-center h-12 rounded-ui bg-primary text-on-primary text-xs font-semibold leading-tight">${Icon('apps', 'text-xl')}<span>Todos</span></button>`;
+  const MOTIVES = {
+    lista: (reglas) => reglas.slice(0, 3).map(dockChip).join('') + MOTIVES_ALL_BUTTON,
+    vacio: () => ''
+  };
+
+  const MOTIVE_TABS = [
+    { key: 'suma', label: 'Suman', icon: 'add' },
+    { key: 'resta', label: 'Restan', icon: 'remove' }
+  ];
+  const motiveCell = (r) => `
+    <button type="button" data-motivo="${esc(r.id)}" data-sheet="1" class="pressable flex items-center gap-2 min-h-[3.5rem] px-2 text-left rounded-ui border border-line bg-surface">
+      ${Icon(safeIcon(r.icono, 'rule'), 'text-xl text-ink-soft')}
+      <span class="flex-1 min-w-0 text-sm font-medium leading-tight">${esc(r.nombre)}</span>
+      <span class="font-bold tabular-nums ${motiveTone(r)}">${fmt(r.puntos)}</span>
+    </button>`;
+  const MOTIVE_SHEET = {
+    lista: ({ reglas, n }) => `
+      <div class="space-y-3">
+        <p class="text-sm text-ink-soft">Se aplica a ${n} ${n === 1 ? 'alumno seleccionado' : 'alumnos seleccionados'}. Toca varios y pulsa Listo.</p>
+        ${Segmented({ options: MOTIVE_TABS, active: mtab, attr: 'data-mtab', fill: true })}
+        <div class="grid grid-cols-2 gap-2">${reglas.map(motiveCell).join('')}</div>
+      </div>`,
+    sinSeleccion: () => infoBox('Cierra esta hoja, toca a los alumnos y vuelve a abrirla.'),
+    vacio: () => infoBox('No hay reglas en la pestaña ReglasYPremios.')
+  };
+  const getMotiveSheetKind = () => (!S.reglas.length ? 'vacio' : selected.size ? 'lista' : 'sinSeleccion');
+
 
   /* ---- Ruleta: fases ---- */
   const wheelBonuses = () => (S.config.ruletaBonus && S.config.ruletaBonus.length ? S.config.ruletaBonus : [10]);
@@ -292,9 +322,14 @@
     $('#selinfo').textContent = resolve(SELECTION_LABELS, selected.size ? 'some' : 'none', 'none')(selected.size);
   }
 
+  const favoritos = () => [...S.reglas].sort((a, b) => (S.uso[b.id] || 0) - (S.uso[a.id] || 0) || b.puntos - a.puntos);
   function renderMotives() {
-    const reglas = [...S.reglas].sort((a, b) => b.puntos - a.puntos);
+    const reglas = favoritos();
     $('#motives').innerHTML = resolve(MOTIVES, reglas.length ? 'lista' : 'vacio', 'vacio')(reglas);
+  }
+  function renderMotiveSheet() {
+    const reglas = S.reglas.filter((r) => getMotiveKind(r) === mtab).sort((a, b) => Math.abs(b.puntos) - Math.abs(a.puntos));
+    $('#motives-body').innerHTML = resolve(MOTIVE_SHEET, getMotiveSheetKind(), 'vacio')({ reglas, n: selected.size });
   }
 
   function renderCartCount() {
@@ -355,7 +390,7 @@
     renderList();
   }
 
-  function addMov(m, ids) {
+  function addMov(m, ids, keep) {
     if (sending) return false;
     const targets = ids || [...selected];
     if (!targets.length) {
@@ -363,7 +398,7 @@
       return false;
     }
     targets.forEach((id) => S.cart.push({ id: uid(), alumnoId: id, tipo: m.tipo, delta: m.tipo === 'reset' || m.tipo === 'insignia' ? 0 : m.delta, nota: m.nota || '', ref: m.ref || '' }));
-    if (!ids) selected.clear();
+    if (!ids && !keep) selected.clear();
     persist();
     render();
     haptic();
@@ -376,8 +411,8 @@
     ruleta: (m, n) => `Ruleta: ${fmt(m.delta)} añadido al carrito`,
     delta: (m, n) => `${m.nota ? m.nota + ' ' : ''}${fmt(m.delta)} añadido al carrito (${n})`
   };
-  function addWithToast(m, ids) {
-    const n = addMov(m, ids);
+  function addWithToast(m, ids, keep) {
+    const n = addMov(m, ids, keep);
     if (n) toast(resolve(ADD_MESSAGES, m.tipo, 'delta')(m, n), 'ok');
     return n;
   }
@@ -386,9 +421,21 @@
     value === 'reset' ? addWithToast({ tipo: 'reset' }) : addWithToast({ tipo: 'delta', delta: parseInt(value, 10) });
   }
 
-  function addMotivo(id) {
+  function addMotivo(id, fromSheet) {
     const r = S.reglas.find((x) => x.id === id);
-    if (r) addWithToast({ tipo: 'delta', delta: r.puntos, nota: r.nombre });
+    if (!r) return;
+    const n = addWithToast({ tipo: 'delta', delta: r.puntos, nota: r.nombre }, null, fromSheet);
+    if (n) { S.uso[id] = (S.uso[id] || 0) + 1; persist(); renderMotives(); }
+  }
+  function openMotives() {
+    mtab = S.reglas.some((r) => r.puntos >= 0) ? 'suma' : 'resta';
+    renderMotiveSheet();
+    openSheet('sheet-motives');
+  }
+  function closeMotives() {
+    selected.clear();
+    closeSheet('sheet-motives');
+    renderList();
   }
 
   /* ---- Insignias ---- */
@@ -600,7 +647,10 @@
     ['[data-banner-close]', () => { S.banner = null; renderBanner(); }],
     ['[data-demo-reset]', () => resetDemoData()],
     ['[data-al]', (el) => toggleStudent(el.dataset.al)],
-    ['[data-motivo]', (el) => addMotivo(el.dataset.motivo)],
+    ['[data-motivos-open]', () => openMotives()],
+    ['[data-motivos-done]', () => closeMotives()],
+    ['[data-mtab]', (el) => { mtab = el.dataset.mtab; renderMotiveSheet(); }],
+    ['[data-motivo]', (el) => addMotivo(el.dataset.motivo, !!el.dataset.sheet)],
     ['[data-ins]', (el) => addInsignia(el.dataset.ins)],
     ['[data-spin]', () => spinWheel()],
     ['[data-wheel-add]', () => wheelToCart()],

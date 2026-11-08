@@ -44,7 +44,7 @@
 
   <!-- Barra de acciones (zona del pulgar) -->
   <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
-    <div id="motives" class="flex gap-2 mb-2 overflow-x-auto" aria-label="Motivos frecuentes"></div>
+    <div id="motives" class="grid grid-cols-4 gap-2 mb-2" aria-label="Motivos frecuentes"></div>
     <div class="grid grid-cols-5 gap-2 mb-2">
       <button type="button" data-q="-10" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
       <button type="button" data-q="-5" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
@@ -80,6 +80,21 @@
           <button id="cart-send" type="button" class="pressable inline-flex flex-1 items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary font-semibold"></button>
         </div>
         <div id="cart-demo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hoja: motivos (todas las reglas, sin deslizar) -->
+  <div id="sheet-motives" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Motivos">
+    <div class="sheet-bg" data-close="sheet-motives"></div>
+    <div class="sheet-panel flex flex-col w-full max-h-[85dvh] bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Motivos</h2>
+        <button type="button" data-close="sheet-motives" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div id="motives-body" class="flex-1 overflow-y-auto px-3 py-3"></div>
+      <div class="px-3 pt-2 pb-3 border-t border-line">
+        <button type="button" data-motivos-done class="pressable inline-flex w-full items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary font-semibold"><span class="icon">check</span><span>Listo</span></button>
       </div>
     </div>
   </div>
