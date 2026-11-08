@@ -147,6 +147,27 @@ html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
 .grid-fit-md { --fit-min: 11rem; }
 .grid-fit-lg { --fit-min: 14rem; }
 
+/* ---------- Cosmeticos desbloqueables (colores extra y degradados) ----------
+   .cos-<clave>      fondo suave de tarjeta o fila (con su borde)
+   .cos-<clave>-av   version algo mas intensa para la burbuja del avatar y la muestra del editor
+   Colores pastel y sin animaciones: el texto oscuro mantiene un contraste alto. */
+.cos-coral { background: #fde4dc; border-color: #f4b9a8; }
+.cos-coral-av { background: #f9c4b3; }
+.cos-lavanda { background: #ece6f8; border-color: #cdbfe9; }
+.cos-lavanda-av { background: #d9cdf1; }
+.cos-menta { background: #dff5ea; border-color: #b3e3cb; }
+.cos-menta-av { background: #bfead4; }
+.cos-dorado { background: linear-gradient(135deg, #fbf1cf, #f3dc8c); border-color: #e3c564; }
+.cos-dorado-av { background: linear-gradient(135deg, #f8e7a4, #eacb5c); }
+.cos-deg-aurora { background: linear-gradient(135deg, #d6f0e4 0%, #d9e6fb 55%, #eadbf6 100%); border-color: #bcd3ea; }
+.cos-deg-aurora-av { background: linear-gradient(135deg, #a9e0c8 0%, #a9c6f5 55%, #d2b5ee 100%); }
+.cos-deg-atardecer { background: linear-gradient(135deg, #fde3cf 0%, #fbd3dc 55%, #e6d5f2 100%); border-color: #efc3c3; }
+.cos-deg-atardecer-av { background: linear-gradient(135deg, #f9bd94 0%, #f6a9be 55%, #cfaee8 100%); }
+.cos-deg-oceano { background: linear-gradient(135deg, #d3f0f3 0%, #d3e3fa 55%, #d9dcf6 100%); border-color: #b5d2e6; }
+.cos-deg-oceano-av { background: linear-gradient(135deg, #8fd9e3 0%, #8fb8f0 55%, #a9a8e8 100%); }
+.cos-deg-bosque { background: linear-gradient(135deg, #dcefd3 0%, #cfeadf 55%, #d8e8c4 100%); border-color: #b4d6b0; }
+.cos-deg-bosque-av { background: linear-gradient(135deg, #a8dc92 0%, #86d2b4 55%, #c3dd8d 100%); }
+
 /* Hojas modales y dialogos */
 .sheet { position: fixed; inset: 0; z-index: 50; display: none; }
 .sheet.open { display: flex; }

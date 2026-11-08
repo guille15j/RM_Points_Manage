@@ -227,7 +227,7 @@
   const infoBox = (text) => `<p class="flex items-start gap-2 p-3 text-sm rounded-ui bg-surface-alt text-ink-soft">${Icon('info', 'text-xl')}<span>${text}</span></p>`;
   const BADGE_SHEET = {
     lista: (n) => `
-      <p class="mb-3 text-sm text-ink-soft">Se concederá a ${n} ${n === 1 ? 'alumno seleccionado' : 'alumnos seleccionados'}. Las insignias son permanentes.</p>
+      <p class="mb-3 text-sm text-ink-soft">Se concederá a ${n} ${n === 1 ? 'alumno seleccionado' : 'alumnos seleccionados'}. Dura ${S.config.insigniaDias || 7} días (si ya la tenía, se renueva). Los cosméticos que desbloquea no caducan.</p>
       <ul class="rounded-ui border border-line bg-surface divide-y divide-line overflow-hidden">
         ${S.insignias.map((i) => `
           <li><button type="button" data-ins="${esc(i.id)}" class="pressable flex items-center w-full gap-3 px-3 py-2 text-left min-h-[3.5rem] bg-surface">
@@ -450,13 +450,10 @@
   function addInsignia(id) {
     const ins = findInsignia(id);
     if (!ins) return;
-    // Quien ya la tiene no se repite
-    const ids = [...selected].filter((aid) => {
-      const a = findAlumno(aid);
-      return a && !(a.insignias || []).includes(id) && !S.cart.some((m) => m.tipo === 'insignia' && m.ref === id && m.alumnoId === aid);
-    });
+    // Solo se evita repetirla dentro del mismo carrito; si ya la tiene, se renueva el plazo
+    const ids = [...selected].filter((aid) => findAlumno(aid) && !S.cart.some((m) => m.tipo === 'insignia' && m.ref === id && m.alumnoId === aid));
     closeSheet('sheet-badge');
-    if (!ids.length) return toast('Los seleccionados ya tienen esa insignia', 'info');
+    if (!ids.length) return toast('Esa insignia ya está en el carrito', 'info');
     selected.clear();
     addWithToast({ tipo: 'insignia', nota: ins.nombre, ref: id }, ids);
   }

@@ -30,29 +30,60 @@
     return `<span class="icon${fill ? ' icon-fill' : ''}${cls ? ' ' + cls : ''}" aria-hidden="true">${esc(name)}</span>`;
   }
 
-  /* ---------- Colores de identidad del alumno (los elige al personalizar su tarjeta) ---------- */
+  /* ---------- Colores de identidad del alumno (los elige al personalizar su tarjeta) ----------
+   * card   : fondo y borde de la tarjeta     row : fondo de la fila en Lista y Ranking
+   * avatar : burbuja del avatar              swatch : muestra en el editor
+   * Los cosmeticos (colores extra y degradados) usan clases propias de styles.css: .cos-<clave>.
+   * Un mismo color o degradado se aplica igual en Tarjetas, Lista y Ranking. */
+  // Clases escritas completas (no construidas por partes) para que Tailwind las detecte siempre
+  const plain = (label, card, row, avatar, swatch) => ({ label, card, row, avatar, swatch });
+  const cosmetic = (label, key) => ({ label, card: `cos-${key}`, row: `cos-${key}`, avatar: `cos-${key}-av text-ink`, swatch: `cos-${key}-av` });
   const COLOR_STYLES = {
-    base: { label: 'Blanco', card: 'bg-surface border-line', avatar: 'bg-primary-soft text-primary', swatch: 'bg-surface border-2 border-line' },
-    azul: { label: 'Azul', card: 'bg-sky-50 border-sky-200', avatar: 'bg-sky-100 text-sky-700', swatch: 'bg-sky-300' },
-    verde: { label: 'Verde', card: 'bg-emerald-50 border-emerald-200', avatar: 'bg-emerald-100 text-emerald-700', swatch: 'bg-emerald-300' },
-    turquesa: { label: 'Turquesa', card: 'bg-teal-50 border-teal-200', avatar: 'bg-teal-100 text-teal-700', swatch: 'bg-teal-300' },
-    amarillo: { label: 'Amarillo', card: 'bg-yellow-50 border-yellow-200', avatar: 'bg-yellow-100 text-yellow-700', swatch: 'bg-yellow-300' },
-    naranja: { label: 'Naranja', card: 'bg-orange-50 border-orange-200', avatar: 'bg-orange-100 text-orange-700', swatch: 'bg-orange-300' },
-    rosa: { label: 'Rosa', card: 'bg-pink-50 border-pink-200', avatar: 'bg-pink-100 text-pink-700', swatch: 'bg-pink-300' },
-    violeta: { label: 'Violeta', card: 'bg-violet-50 border-violet-200', avatar: 'bg-violet-100 text-violet-700', swatch: 'bg-violet-300' },
-    arena: { label: 'Arena', card: 'bg-stone-100 border-stone-300', avatar: 'bg-stone-200 text-stone-700', swatch: 'bg-stone-300' }
+    base: { label: 'Blanco', card: 'bg-surface border-line', row: '', avatar: 'bg-primary-soft text-primary', swatch: 'bg-surface border-2 border-line' },
+    azul: plain('Azul', 'bg-sky-50 border-sky-200', 'bg-sky-50', 'bg-sky-100 text-sky-700', 'bg-sky-300'),
+    verde: plain('Verde', 'bg-emerald-50 border-emerald-200', 'bg-emerald-50', 'bg-emerald-100 text-emerald-700', 'bg-emerald-300'),
+    turquesa: plain('Turquesa', 'bg-teal-50 border-teal-200', 'bg-teal-50', 'bg-teal-100 text-teal-700', 'bg-teal-300'),
+    amarillo: plain('Amarillo', 'bg-yellow-50 border-yellow-200', 'bg-yellow-50', 'bg-yellow-100 text-yellow-700', 'bg-yellow-300'),
+    naranja: plain('Naranja', 'bg-orange-50 border-orange-200', 'bg-orange-50', 'bg-orange-100 text-orange-700', 'bg-orange-300'),
+    rosa: plain('Rosa', 'bg-pink-50 border-pink-200', 'bg-pink-50', 'bg-pink-100 text-pink-700', 'bg-pink-300'),
+    violeta: plain('Violeta', 'bg-violet-50 border-violet-200', 'bg-violet-50', 'bg-violet-100 text-violet-700', 'bg-violet-300'),
+    arena: { label: 'Arena', card: 'bg-stone-100 border-stone-300', row: 'bg-stone-100', avatar: 'bg-stone-200 text-stone-700', swatch: 'bg-stone-300' },
+    // Cosmeticos: se desbloquean con insignias (el motor decide cuales)
+    coral: cosmetic('Coral', 'coral'),
+    lavanda: cosmetic('Lavanda', 'lavanda'),
+    menta: cosmetic('Menta', 'menta'),
+    dorado: cosmetic('Dorado', 'dorado'),
+    'deg-aurora': cosmetic('Aurora', 'deg-aurora'),
+    'deg-atardecer': cosmetic('Atardecer', 'deg-atardecer'),
+    'deg-oceano': cosmetic('Océano', 'deg-oceano'),
+    'deg-bosque': cosmetic('Bosque', 'deg-bosque')
   };
   const colorStyle = (key) => resolve(COLOR_STYLES, key, 'base');
 
-  /* ---------- Avatar de alumno ---------- */
+  // Nombres de los avatares imagen (el dibujo esta en avatares/<nombre>.svg)
+  const AVATAR_IMAGE_LABELS = { robot: 'Robot', androide: 'Androide', gato: 'Gato', zorro: 'Zorro', buho: 'Búho', pulpo: 'Pulpo' };
+  /** Nombre legible de un cosmetico (clave del motor) para mostrarlo en la interfaz. */
+  const cosmeticLabel = (key) =>
+    key.indexOf('img:') === 0 ? 'Avatar ' + (AVATAR_IMAGE_LABELS[key.slice(4)] || key.slice(4)) : (key.indexOf('deg-') === 0 ? 'Fondo ' : 'Color ') + colorStyle(key).label;
+
+  /* ---------- Avatar de alumno: icono de Material o imagen (clave 'img:nombre') ---------- */
   const AVATAR_SIZES = {
     sm: { box: 'w-10 h-10', icon: 'text-2xl' },
     md: { box: 'w-12 h-12', icon: 'text-3xl' },
     lg: { box: 'w-16 h-16', icon: 'text-4xl' }
   };
+  const IMG_RE = /^[a-z0-9-]{1,30}$/;
+  const AVATAR_FACES = {
+    icon: (v, s) => Icon(safeIcon(v, 'person'), s.icon),
+    image: (v) => `<img src="avatares/${esc(IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot')}.svg" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`
+  };
+  const getAvatarKind = (v) => (String(v || '').indexOf('img:') === 0 ? 'image' : 'icon');
+  /** Dibujo del avatar (icono o imagen) sin burbuja; sirve para las opciones del editor. */
+  const avatarFace = (v, size) => resolve(AVATAR_FACES, getAvatarKind(String(v || '')), 'icon')(String(v || ''), resolve(AVATAR_SIZES, size, 'md'));
   function Avatar({ icono, color, size }) {
     const s = resolve(AVATAR_SIZES, size, 'md');
-    return `<span class="flex items-center justify-center shrink-0 rounded-full ${colorStyle(color).avatar} ${s.box}">${Icon(safeIcon(icono, 'person'), s.icon)}</span>`;
+    const v = String(icono || '');
+    return `<span class="flex items-center justify-center shrink-0 overflow-hidden rounded-full ${colorStyle(color).avatar} ${s.box}">${resolve(AVATAR_FACES, getAvatarKind(v), 'icon')(v, s)}</span>`;
   }
 
   /* ---------- Racha ---------- */
@@ -65,18 +96,24 @@
   const renderStreak = (alumno) => resolve(STREAK_CHIPS, getStreakKind(alumno), 'ninguna')(alumno);
 
   /* ---------- Insignias ---------- */
-  const BADGE_ICON = ({ ins }) =>
-    `<span class="flex items-center justify-center shrink-0 w-8 h-8 rounded-full border border-line bg-surface text-primary" title="${esc(ins.nombre)}">${Icon(safeIcon(ins.icono, 'military_tech'), 'text-xl')}<span class="sr-only">${esc(ins.nombre)}</span></span>`;
+  const DAYS_LEFT = {
+    si: (n) => ` (${n === 0 ? 'último día' : n === 1 ? 'queda 1 día' : 'quedan ' + n + ' días'})`,
+    no: () => ''
+  };
+  const BADGE_ICON = ({ ins, restan }) => {
+    const left = resolve(DAYS_LEFT, restan === undefined ? 'no' : 'si', 'no')(restan);
+    return `<span class="flex items-center justify-center shrink-0 w-8 h-8 rounded-full border border-line bg-surface text-primary" title="${esc(ins.nombre + left)}">${Icon(safeIcon(ins.icono, 'military_tech'), 'text-xl')}<span class="sr-only">${esc(ins.nombre + left)}</span></span>`;
+  };
   const BADGE_MORE = {
     si: (n) => `<span class="text-sm font-bold text-ink-soft">+${n}</span>`,
     no: () => ''
   };
-  /** ids: insignias del alumno; catalog: lista completa; max: cuantas se muestran. */
-  function renderBadges({ ids, catalog, max }) {
+  /** ids: insignias activas del alumno; catalog: lista completa; restan: {id: dias}; max: cuantas se muestran. */
+  function renderBadges({ ids, catalog, max, restan }) {
     const all = (ids || []).map((id) => catalog.find((i) => i.id === id)).filter(Boolean);
     const shown = all.slice(0, max || 4);
     const extra = all.length - shown.length;
-    return shown.map((ins) => BADGE_ICON({ ins })).join('') + resolve(BADGE_MORE, extra > 0 ? 'si' : 'no', 'no')(extra);
+    return shown.map((ins) => BADGE_ICON({ ins, restan: restan ? restan[ins.id] : undefined })).join('') + resolve(BADGE_MORE, extra > 0 ? 'si' : 'no', 'no')(extra);
   }
 
   /* ---------- Notas (descripcion) ---------- */
@@ -170,7 +207,7 @@
   const closeSheet = (id) => document.getElementById(id).classList.remove('open');
 
   window.UI = {
-    resolve, safeIcon, Icon, COLOR_STYLES, colorStyle, Avatar, renderStreak, renderBadges, renderNote,
+    resolve, safeIcon, Icon, COLOR_STYLES, colorStyle, cosmeticLabel, avatarFace, Avatar, renderStreak, renderBadges, renderNote,
     btnClass, IconButton, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet
   };
 })();

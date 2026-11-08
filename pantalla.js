@@ -16,7 +16,7 @@
 (function () {
   'use strict';
   const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, pickState } = window.TP;
-  const { resolve, safeIcon, Icon, Avatar, colorStyle, COLOR_STYLES, renderStreak, renderBadges, renderNote, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
+  const { resolve, safeIcon, Icon, Avatar, avatarFace, colorStyle, cosmeticLabel, renderStreak, renderBadges, renderNote, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
   const UI_ICON = (name) => safeIcon(name, 'redeem'); // icono de premio (si el dato no es valido, usa 'redeem')
 
   /* ======================= 1. ESTADO ======================= */
@@ -29,7 +29,7 @@
     premios: saved.premios || [],
     insignias: saved.insignias || [],
     reto: saved.reto || null,
-    config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [] },
+    config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [], cosmeticos: [], insigniaDias: 7 },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
     sel: null,                    // alumno que canjea (no se guarda: terminal compartido)
@@ -54,7 +54,7 @@
     return `<span class="inline-flex items-center gap-2 font-bold tabular-nums ${size || 'text-3xl'}">${Icon('star', 'text-[0.85em] text-primary', true)}<span>${value}</span></span>`;
   }
   const StudentAvatar = (a, size) => Avatar({ icono: a.avatar, color: a.color, size });
-  const Badges = (a, max) => renderBadges({ ids: a.insignias, catalog: S.insignias, max });
+  const Badges = (a, max) => renderBadges({ ids: a.insignias || [], catalog: S.insignias, max, restan: a.insigniasRestan });
 
   /* ---- Reto de clase (barra comun) ---- */
   const RETO_STATES = {
@@ -90,7 +90,7 @@
       .sort(byName)
       .map(
         (a) => `
-      <li class="flex items-center gap-4 px-5 py-3 min-h-tap">
+      <li class="flex items-center gap-4 px-5 py-3 min-h-tap ${colorStyle(a.color).row}">
         ${StudentAvatar(a, 'md')}
         <span class="flex-1 min-w-0 text-xl font-bold truncate">${esc(a.nombre)}</span>
         <span class="flex items-center gap-1.5">${Badges(a, 4)}</span>
@@ -128,7 +128,7 @@
     const rows = rankAlumnos(alumnos)
       .map(
         (a) => `
-      <li class="flex items-center gap-4 px-5 py-4">
+      <li class="flex items-center gap-4 px-5 py-4 ${colorStyle(a.color).row}">
         ${resolve(RANK_BADGES, getRankKind(a), 'rest')(a)}
         ${StudentAvatar(a, 'md')}
         <div class="flex-1 min-w-0 space-y-2">
@@ -237,12 +237,17 @@
       `<p class="px-4 py-3 text-lg text-ink-soft">Cada clase en la que sumas puntos, tu racha crece. Cada ${c.rachaHito} clases seguidas ganas <strong class="text-ink">+${c.rachaBonus}</strong> puntos extra.</p>`);
   }
 
+  const UNLOCKS = {
+    si: (list) => `<p class="text-base leading-tight text-primary">Desbloquea: ${esc(list.map(cosmeticLabel).join(', '))}</p>`,
+    no: () => ''
+  };
   const BADGE_LEGEND_BODY = {
     lleno: () => sectionCard('sec-insignias', 'bg-primary-soft text-primary', 'military_tech', 'Insignias',
-      `<ul class="divide-y divide-line">${S.insignias
+      `<p class="px-4 py-3 text-lg text-ink-soft border-b border-line">Duran ${S.config.insigniaDias || 7} días. Lo que desbloquean es tuyo para siempre.</p>
+      <ul class="divide-y divide-line">${S.insignias
         .map((i) => `<li class="flex items-center gap-3 px-4 py-2.5 min-h-tap">
           <span class="flex items-center justify-center shrink-0 w-11 h-11 rounded-full border border-line bg-surface text-primary">${Icon(safeIcon(i.icono, 'military_tech'), 'text-3xl')}</span>
-          <div class="flex-1 min-w-0"><p class="text-lg font-bold leading-tight">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-base leading-tight text-ink-soft')}</div>
+          <div class="flex-1 min-w-0"><p class="text-lg font-bold leading-tight">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-base leading-tight text-ink-soft')}${resolve(UNLOCKS, (i.desbloquea || []).length ? 'si' : 'no', 'no')(i.desbloquea || [])}</div>
         </li>`).join('')}</ul>`),
     vacio: () => ''
   };
@@ -393,19 +398,41 @@
   }
 
   /* ---- Editor de identidad ---- */
+  const optBase = 'pressable relative flex items-center justify-center aspect-square rounded-ui overflow-hidden';
+  const LOCK = `<span class="absolute bottom-0.5 right-0.5 flex items-center justify-center w-6 h-6 rounded-full bg-surface text-ink-soft">${Icon('lock', 'text-base')}</span>`;
   const AVATAR_OPTION = {
-    on: (name) => `<button type="button" data-av="${esc(name)}" aria-pressed="true" aria-label="${esc(name.replace(/_/g, ' '))}" class="pressable flex items-center justify-center aspect-square rounded-ui border-4 border-primary bg-primary-soft text-primary">${Icon(safeIcon(name, 'person'), 'text-4xl')}</button>`,
-    off: (name) => `<button type="button" data-av="${esc(name)}" aria-pressed="false" aria-label="${esc(name.replace(/_/g, ' '))}" class="pressable flex items-center justify-center aspect-square rounded-ui border-2 border-line bg-surface text-ink">${Icon(safeIcon(name, 'person'), 'text-4xl')}</button>`
+    on: (k) => `<button type="button" data-av="${esc(k)}" aria-pressed="true" aria-label="${esc(k)}" class="${optBase} border-4 border-primary bg-primary-soft text-primary">${avatarFace(k, 'lg')}</button>`,
+    off: (k) => `<button type="button" data-av="${esc(k)}" aria-pressed="false" aria-label="${esc(k)}" class="${optBase} border-2 border-line bg-surface text-ink">${avatarFace(k, 'lg')}</button>`,
+    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="${optBase} border-2 border-dashed border-line bg-surface-alt text-ink-soft opacity-60">${avatarFace(k, 'lg')}${LOCK}</button>`
   };
   const COLOR_OPTION = {
-    on: (key) => `<button type="button" data-co="${esc(key)}" aria-pressed="true" aria-label="${esc(colorStyle(key).label)}" class="pressable flex items-center justify-center w-16 h-16 rounded-full border-4 border-primary ${colorStyle(key).swatch}">${Icon('check', 'text-3xl text-ink')}</button>`,
-    off: (key) => `<button type="button" data-co="${esc(key)}" aria-pressed="false" aria-label="${esc(colorStyle(key).label)}" class="pressable w-16 h-16 rounded-full border-2 border-line ${colorStyle(key).swatch}"></button>`
+    on: (k) => `<button type="button" data-co="${esc(k)}" aria-pressed="true" aria-label="${esc(colorStyle(k).label)}" class="pressable flex items-center justify-center w-16 h-16 rounded-full border-4 border-primary ${colorStyle(k).swatch}">${Icon('check', 'text-3xl text-ink')}</button>`,
+    off: (k) => `<button type="button" data-co="${esc(k)}" aria-pressed="false" aria-label="${esc(colorStyle(k).label)}" class="pressable w-16 h-16 rounded-full border-2 border-line ${colorStyle(k).swatch}"></button>`,
+    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="pressable relative flex items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-line opacity-50 ${colorStyle(k).swatch}">${Icon('lock', 'text-3xl text-ink')}</button>`
+  };
+
+  /** Opciones de un tipo: gratis (hoja Config) + cosmeticos desbloqueados + cosmeticos bloqueados. */
+  function optionsOf({ tipo, free, a }) {
+    const mine = a.cosmeticos || [];
+    const extra = (S.config.cosmeticos || []).filter((c) => c.tipo === tipo);
+    return {
+      open: free.concat(extra.filter((c) => mine.indexOf(c.clave) >= 0).map((c) => c.clave)),
+      locked: extra.filter((c) => mine.indexOf(c.clave) < 0)
+    };
+  }
+  const optionState = (key, chosen) => (key === chosen ? 'on' : 'off');
+
+  const CUSTOM_HINT = {
+    si: (text) => `<p class="flex items-center gap-3 p-3 rounded-ui bg-attention-soft text-attention text-xl font-bold">${Icon('lock', 'text-3xl')}<span>${esc(text)}</span></p>`,
+    no: () => ''
   };
 
   function CustomBody({ c, a }) {
-    const avatares = S.config.avatares.map((n) => resolve(AVATAR_OPTION, n === c.avatar ? 'on' : 'off', 'off')(n)).join('');
-    const colores = S.config.colores.map((k) => resolve(COLOR_OPTION, k === c.color ? 'on' : 'off', 'off')(k)).join('');
-    const ready = !!c.avatar && !!c.color;
+    const av = optionsOf({ tipo: 'avatar', free: S.config.avatares, a });
+    const co = optionsOf({ tipo: 'color', free: S.config.colores, a });
+    const avatares = av.open.map((k) => resolve(AVATAR_OPTION, optionState(k, c.avatar), 'off')(k)).concat(av.locked.map((x) => AVATAR_OPTION.locked(x.clave))).join('');
+    const colores = co.open.map((k) => resolve(COLOR_OPTION, optionState(k, c.color), 'off')(k)).concat(co.locked.map((x) => COLOR_OPTION.locked(x.clave))).join('');
+    const ready = av.open.indexOf(c.avatar) >= 0 && co.open.indexOf(c.color) >= 0;
     return `
       <div class="space-y-6">
         <div class="flex items-center gap-5 p-4 rounded-ui-lg border ${colorStyle(c.color).card}">
@@ -420,14 +447,22 @@
           <div class="grid grid-cols-6 gap-3">${avatares}</div>
         </section>
         <section>
-          <h3 class="mb-3 text-2xl font-bold">2. Elige tu color</h3>
+          <h3 class="mb-3 text-2xl font-bold">2. Elige tu color o fondo</h3>
           <div class="flex flex-wrap gap-4">${colores}</div>
         </section>
+        ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
         <div class="grid grid-cols-2 gap-4 pt-2">
           <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
           <button type="button" data-custom-save ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Guardar</span></button>
         </div>
       </div>`;
+  }
+
+  // Al tocar algo bloqueado se explica como conseguirlo (sin cambiar la seleccion)
+  function showLocked(key) {
+    const x = (S.config.cosmeticos || []).find((c) => c.clave === key);
+    custom.hint = x ? `${cosmeticLabel(key)}: se consigue con la insignia ${x.insigniaNombre}.` : 'Todavía está bloqueado.';
+    renderCustom();
   }
 
   /* ---- Navegacion por pestanas ---- */
@@ -522,7 +557,7 @@
   function openCustom(alumnoId) {
     const a = findAlumno(alumnoId);
     if (!a) return;
-    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '' };
+    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '', hint: '' };
     renderCustom();
     openSheet('sheet-custom');
   }
@@ -592,8 +627,9 @@
     ['[data-confirm]', () => doRedeem()],
     ['[data-custom-save]', () => saveCustom()],
     ['[data-custom-later]', () => closeCustom()],
-    ['[data-av]', (el) => { custom.avatar = el.dataset.av; renderCustom(); }],
-    ['[data-co]', (el) => { custom.color = el.dataset.co; renderCustom(); }],
+    ['[data-locked]', (el) => showLocked(el.dataset.locked)],
+    ['[data-av]', (el) => { custom.avatar = el.dataset.av; custom.hint = ''; renderCustom(); }],
+    ['[data-co]', (el) => { custom.color = el.dataset.co; custom.hint = ''; renderCustom(); }],
     ['[data-open-custom]', () => openCustom(S.sel)],
     ['[data-close]', (el) => closeSheet(el.dataset.close)],
     ['[data-goto]', (el) => { const s = document.getElementById(el.dataset.goto); if (s) s.scrollIntoView({ block: 'start' }); }],

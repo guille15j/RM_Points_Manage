@@ -70,16 +70,35 @@
   }
 
   /* ---------- MODO DEMO ---------- */
-  const DEMO_KEY = 'demo_db_v3';
+  const DEMO_KEY = 'demo_db_v4';
   const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
   const demoCtx = () => ({ now: new Date(), fmtDay: (d) => dayFmt.format(d), uuid: uid });
+
+  /**
+   * Desplaza el historial de prueba en SEMANAS COMPLETAS (conserva lunes y jueves) para que el ultimo
+   * apunte caiga en los ultimos 7 dias. Asi las insignias de ejemplo (que caducan) siguen vigentes.
+   */
+  function rebase(t) {
+    const WEEK = 7 * 86400000;
+    const times = t.movimientos.map((m) => Date.parse(m.fecha)).filter((n) => !isNaN(n));
+    if (!times.length) return t;
+    const k = Math.floor((Date.now() - Math.max(...times)) / WEEK);
+    if (k <= 0) return t;
+    t.movimientos.forEach((m) => {
+      const n = Date.parse(m.fecha);
+      if (!isNaN(n)) m.fecha = new Date(n + k * WEEK).toISOString();
+    });
+    const rd = t.config.find((c) => c.clave === 'reto_desde');
+    if (rd && /^\d{4}-\d{2}-\d{2}$/.test(String(rd.valor))) rd.valor = new Date(Date.parse(rd.valor + 'T00:00:00Z') + k * WEEK).toISOString().slice(0, 10);
+    return t;
+  }
 
   /** Tablas de la hoja simulada. La primera vez se siembran desde datos-prueba.json. */
   async function demoTables() {
     let t = store.get(DEMO_KEY, null);
     if (!t) {
       const r = await fetchTimeout(CFG.DEMO_DATA_URL || 'datos-prueba.json', { cache: 'no-cache' }, 8000);
-      t = await r.json();
+      t = rebase(await r.json());
       store.set(DEMO_KEY, t);
     }
     return t;
