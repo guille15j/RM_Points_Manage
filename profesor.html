@@ -35,11 +35,16 @@
         <button id="sel-none" type="button" class="pressable h-11 px-3 rounded-ui text-sm font-semibold text-primary">Ninguno</button>
       </span>
     </div>
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-2 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
+      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-2 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
+    </div>
     <div id="list"></div>
   </main>
 
   <!-- Barra de acciones (zona del pulgar) -->
   <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
+    <div id="motives" class="flex gap-2 mb-2 overflow-x-auto" aria-label="Motivos frecuentes"></div>
     <div class="grid grid-cols-5 gap-2 mb-2">
       <button type="button" data-q="-10" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
       <button type="button" data-q="-5" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
@@ -79,6 +84,30 @@
     </div>
   </div>
 
+  <!-- Hoja: insignias -->
+  <div id="sheet-badge" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Conceder insignia">
+    <div class="sheet-bg" data-close="sheet-badge"></div>
+    <div class="sheet-panel flex flex-col w-full max-h-[85dvh] bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Conceder insignia</h2>
+        <button type="button" data-close="sheet-badge" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div id="badge-body" class="flex-1 overflow-y-auto px-3 py-3"></div>
+    </div>
+  </div>
+
+  <!-- Hoja: ruleta -->
+  <div id="sheet-wheel" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Ruleta de refuerzo">
+    <div class="sheet-bg" data-close="sheet-wheel"></div>
+    <div class="sheet-panel flex flex-col w-full bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Ruleta de refuerzo</h2>
+        <button type="button" data-close="sheet-wheel" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div id="wheel-body" class="p-4"></div>
+    </div>
+  </div>
+
   <!-- Hoja: editar movimiento -->
   <div id="sheet-edit" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Editar movimiento">
     <div class="sheet-bg" data-close="sheet-edit"></div>
@@ -88,6 +117,7 @@
   <div id="toast-root" class="fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4 pointer-events-none" style="top: calc(env(safe-area-inset-top) + 3.75rem)"></div>
 
   <script src="config.js"></script>
+  <script src="engine.js"></script>
   <script src="shared.js"></script>
   <script src="ui.js"></script>
   <script src="profesor.js"></script>

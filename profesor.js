@@ -2,11 +2,13 @@
  * profesor.js - Panel del profesor (iPhone / Safari movil)
  *
  * Interfaz de trabajo: lista compacta de alumnos, barra de acciones en la zona del pulgar
- * y carrito de movimientos.
+ * (motivos frecuentes editables desde la hoja + valores rapidos), ruleta de refuerzo,
+ * insignias y carrito de movimientos.
  *
  * Flujo:
  *  1. Toca uno o varios alumnos.
- *  2. Pulsa una accion rapida (+10, +5, -5, -10, A cero) o escribe un valor propio.
+ *  2. Pulsa un motivo frecuente, una accion rapida (+10, +5, -5, -10, A cero) o escribe un valor.
+ *     La ruleta y las insignias tambien anaden al carrito: todo se envia junto.
  *     Se anade al CARRITO (buffer local en localStorage). Nada va aun al servidor.
  *  3. Abre el carrito, revisa / edita / elimina movimientos y pulsa ENVIAR.
  *  4. Envio transaccional:
@@ -21,15 +23,18 @@
  */
 (function () {
   'use strict';
-  const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, resetDemo } = window.TP;
-  const { resolve, Icon, btnClass, IconButton, Segmented, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
+  const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, resetDemo, pickState } = window.TP;
+  const { resolve, safeIcon, Icon, renderStreak, renderNote, btnClass, IconButton, Segmented, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
 
   /* ======================= 1. ESTADO ======================= */
-  const KEY = 'tp_prof_v2';
+  const KEY = 'tp_prof_v3';
   const saved = store.get(KEY, {});
   const S = {
-    alumnos: saved.alumnos || [],   // [{id,nombre,icono,puntos}]  puntos confirmados por el servidor
-    cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset',delta,nota}]
+    alumnos: saved.alumnos || [],   // [{id,nombre,avatar,color,puntos,racha,insignias,pendientes}] confirmado por el servidor
+    reglas: saved.reglas || [],     // motivos frecuentes (pestana ReglasYPremios)
+    insignias: saved.insignias || [],
+    config: saved.config || { ruletaBonus: [] },
+    cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
     pending: saved.pending || null, // {id,sig}: batchId del ultimo intento, para reintentos idempotentes
     status: isDemo() ? 'demo' : 'off',
     banner: null                    // mensaje de error visible, o null
@@ -37,9 +42,14 @@
   const selected = new Set();       // seleccion efimera
   let sending = false;
   let edit = null;                  // movimiento en edicion: {id, sign, value}
+  let wheel = { phase: 'idle', pool: [], name: '', winner: null, bonus: 0 }; // ruleta
+  let wheelTimer = null;
 
   const $ = (s) => document.querySelector(s);
-  const persist = () => store.set(KEY, { alumnos: S.alumnos, cart: S.cart, pending: S.pending });
+  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, cart: S.cart, pending: S.pending });
+  const applyServer = (res) => { ['alumnos', 'reglas', 'insignias', 'config'].forEach((k) => { if (res[k]) S[k] = res[k]; }); };
+  const findInsignia = (id) => S.insignias.find((i) => i.id === id);
+  const randInt = (n) => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findMov = (id) => S.cart.find((m) => m.id === id);
@@ -53,7 +63,7 @@
     S.alumnos.forEach((a) => (m[a.id] = { base: a.puntos, now: a.puntos, d: 0 }));
     S.cart.forEach((c) => {
       const r = m[c.alumnoId];
-      if (r) r.now = c.tipo === 'reset' ? 0 : r.now + c.delta;
+      if (r) r.now = c.tipo === 'reset' ? 0 : r.now + (c.delta || 0);
     });
     Object.keys(m).forEach((id) => (m[id].d = m[id].now - m[id].base));
     return m;
@@ -80,6 +90,7 @@
       <button type="button" data-al="${esc(a.id)}" aria-pressed="${pressed}" class="pressable flex items-center w-full gap-3 px-3 text-left min-h-[3.25rem] ${tone}">
         ${Icon(icon, 'text-primary')}
         <span class="flex-1 min-w-0 font-medium truncate">${esc(a.nombre)}</span>
+        ${renderStreak(a)}
         ${resolve(PENDING_BADGES, getPendingKind(sim), 'none')(sim)}
         <span class="w-14 text-lg font-semibold text-right tabular-nums">${sim.now}</span>
       </button>
@@ -115,27 +126,35 @@
       </div>`
   };
 
-  /* ---- Filas del carrito: ganancia, perdida o puesta a cero ---- */
+  /* ---- Filas del carrito: ganancia, perdida, puesta a cero, ruleta o insignia ---- */
   const EDIT_BUTTONS = {
     yes: (mov) => IconButton({ icon: 'edit', label: 'Editar movimiento', attrs: `data-edit="${esc(mov.id)}"` }),
     no: () => ''
   };
-  const makeCartRow = ({ tone, editable, amount }) => ({ mov, nombre, before, after }) => `
+  // Segunda linea de la fila: saldo antes -> despues, o el nombre de la insignia
+  const CART_DETAILS = {
+    saldo: ({ before, after, mov }) => `<p class="flex items-center gap-1 text-sm tabular-nums text-ink-soft">${before}${Icon('arrow_forward', 'text-base')}<span class="font-semibold text-ink">${after}</span>${renderNote(mov.nota ? ' · ' + mov.nota : '', 'truncate')}</p>`,
+    insignia: ({ mov }) => `<p class="text-sm text-ink-soft truncate">${esc(mov.nota || 'Insignia')}</p>`
+  };
+  const makeCartRow = ({ tone, editable, amount, detail }) => (props) => `
     <li class="flex items-center pl-3 pr-1 min-h-[3.5rem]">
       <div class="flex-1 min-w-0 py-2">
-        <p class="font-medium truncate">${esc(nombre)}</p>
-        <p class="flex items-center gap-1 text-sm tabular-nums text-ink-soft">${before}${Icon('arrow_forward', 'text-base')}<span class="font-semibold text-ink">${after}</span></p>
+        <p class="font-medium truncate">${esc(props.nombre)}</p>
+        ${resolve(CART_DETAILS, detail, 'saldo')(props)}
       </div>
-      <span class="min-w-[3.25rem] pr-1 font-semibold text-right tabular-nums ${tone}">${amount(mov)}</span>
-      ${resolve(EDIT_BUTTONS, editable, 'no')(mov)}
-      ${IconButton({ icon: 'delete', label: 'Eliminar movimiento', attrs: `data-del="${esc(mov.id)}"` })}
+      <span class="min-w-[3.25rem] pr-1 font-semibold text-right tabular-nums ${tone}">${amount(props.mov)}</span>
+      ${resolve(EDIT_BUTTONS, editable, 'no')(props.mov)}
+      ${IconButton({ icon: 'delete', label: 'Eliminar movimiento', attrs: `data-del="${esc(props.mov.id)}"` })}
     </li>`;
   const CART_ROWS = {
-    gain: makeCartRow({ tone: 'text-success', editable: 'yes', amount: (m) => fmt(m.delta) }),
-    loss: makeCartRow({ tone: 'text-danger', editable: 'yes', amount: (m) => fmt(m.delta) }),
-    reset: makeCartRow({ tone: 'text-ink-soft', editable: 'no', amount: () => 'A 0' })
+    gain: makeCartRow({ tone: 'text-success', editable: 'yes', amount: (m) => fmt(m.delta), detail: 'saldo' }),
+    loss: makeCartRow({ tone: 'text-danger', editable: 'yes', amount: (m) => fmt(m.delta), detail: 'saldo' }),
+    reset: makeCartRow({ tone: 'text-ink-soft', editable: 'no', amount: () => 'A 0', detail: 'saldo' }),
+    ruleta: makeCartRow({ tone: 'text-success', editable: 'no', amount: (m) => fmt(m.delta), detail: 'saldo' }),
+    insignia: makeCartRow({ tone: 'text-primary', editable: 'no', amount: () => Icon('military_tech'), detail: 'insignia' })
   };
-  const getMovementKind = (m) => (m.tipo === 'reset' ? 'reset' : m.delta >= 0 ? 'gain' : 'loss');
+  const MOVEMENT_KINDS = { reset: 'reset', ruleta: 'ruleta', insignia: 'insignia' };
+  const getMovementKind = (m) => MOVEMENT_KINDS[m.tipo] || (m.delta >= 0 ? 'gain' : 'loss');
 
   function CartList({ rows }) {
     return `<ul class="rounded-ui border border-line bg-surface divide-y divide-line overflow-hidden">${rows}</ul>`;
@@ -190,13 +209,92 @@
         <button type="button" data-close="sheet-edit" class="${btnClass('outline', 'flex-1')}">${Icon('close')}<span>Cerrar</span></button>
       </div>`;
   }
-  const EDIT_FIELDS = { gain: EditDelta, loss: EditDelta, reset: EditReset };
+  function EditFixed({ nombre }) {
+    return `
+      ${EditHeader(nombre)}
+      <p class="flex items-start gap-2 p-3 text-sm rounded-ui bg-surface-alt text-ink-soft">${Icon('info', 'text-xl')}<span>Este movimiento no se puede editar. Puedes eliminarlo y crear otro.</span></p>
+      <div class="flex gap-2">
+        <button type="button" data-remove class="${btnClass('danger', 'flex-1')}">${Icon('delete')}<span>Eliminar</span></button>
+        <button type="button" data-close="sheet-edit" class="${btnClass('outline', 'flex-1')}">${Icon('close')}<span>Cerrar</span></button>
+      </div>`;
+  }
+  const EDIT_FIELDS = { gain: EditDelta, loss: EditDelta, reset: EditReset, ruleta: EditFixed, insignia: EditFixed };
+
+  /* ---- Motivos frecuentes (botones de un toque; vienen de la hoja ReglasYPremios) ---- */
+  const MOTIVE_TONES = { suma: 'text-success', resta: 'text-danger' };
+  const getMotiveKind = (r) => (r.puntos >= 0 ? 'suma' : 'resta');
+  const motiveChip = (r) => `
+    <button type="button" data-motivo="${esc(r.id)}" class="pressable inline-flex items-center gap-1.5 shrink-0 h-11 px-3 rounded-ui border border-line bg-surface text-sm font-semibold whitespace-nowrap">
+      ${Icon(safeIcon(r.icono, 'rule'), 'text-xl text-ink-soft')}<span>${esc(r.nombre)}</span><span class="tabular-nums ${resolve(MOTIVE_TONES, getMotiveKind(r), 'suma')}">${fmt(r.puntos)}</span>
+    </button>`;
+  const MOTIVES = {
+    lista: (reglas) => reglas.map(motiveChip).join(''),
+    vacio: () => ''
+  };
+
+  /* ---- Hoja de insignias ---- */
+  const infoBox = (text) => `<p class="flex items-start gap-2 p-3 text-sm rounded-ui bg-surface-alt text-ink-soft">${Icon('info', 'text-xl')}<span>${text}</span></p>`;
+  const BADGE_SHEET = {
+    lista: (n) => `
+      <p class="mb-3 text-sm text-ink-soft">Se concederá a ${n} ${n === 1 ? 'alumno seleccionado' : 'alumnos seleccionados'}. Las insignias son permanentes.</p>
+      <ul class="rounded-ui border border-line bg-surface divide-y divide-line overflow-hidden">
+        ${S.insignias.map((i) => `
+          <li><button type="button" data-ins="${esc(i.id)}" class="pressable flex items-center w-full gap-3 px-3 py-2 text-left min-h-[3.5rem] bg-surface">
+            ${Icon(safeIcon(i.icono, 'military_tech'), 'text-primary')}
+            <span class="flex-1 min-w-0"><span class="block font-medium truncate">${esc(i.nombre)}</span>${renderNote(i.descripcion, 'text-sm text-ink-soft')}</span>
+            ${Icon('add', 'text-ink-soft')}
+          </button></li>`).join('')}
+      </ul>`,
+    sinSeleccion: () => infoBox('Cierra esta hoja, toca a los alumnos que la merecen y vuelve a abrirla.'),
+    vacio: () => infoBox('No hay insignias en la pestaña ReglasYPremios.')
+  };
+  const getBadgeSheetKind = () => (!S.insignias.length ? 'vacio' : selected.size ? 'lista' : 'sinSeleccion');
+
+  /* ---- Ruleta: fases ---- */
+  const wheelBonuses = () => (S.config.ruletaBonus && S.config.ruletaBonus.length ? S.config.ruletaBonus : [10]);
+  const wheelPool = () => (selected.size ? S.alumnos.filter((a) => selected.has(a.id)) : S.alumnos);
+  const WHEEL_PHASES = {
+    idle: () => {
+      const n = wheelPool().length;
+      return `
+      <div class="space-y-3 text-center">
+        <p class="text-sm text-ink-soft">Participan ${n} ${n === 1 ? 'alumno' : 'alumnos'} (${selected.size ? 'los seleccionados' : 'toda la clase'}). Bonus posibles: ${wheelBonuses().map((b) => '+' + b).join(', ')}.</p>
+        <div class="flex items-center justify-center h-24 rounded-ui bg-surface-alt text-ink-soft">${Icon('casino', 'text-5xl')}</div>
+        <button type="button" data-spin class="${btnClass('primary', 'w-full')}">${Icon('casino')}<span>Girar</span></button>
+      </div>`;
+    },
+    spinning: () => `
+      <div class="space-y-3 text-center">
+        <p class="text-sm text-ink-soft">Girando...</p>
+        <div class="flex items-center justify-center h-24 px-3 rounded-ui bg-surface-alt text-2xl font-semibold truncate">${esc(wheel.name)}</div>
+        <button type="button" disabled class="${btnClass('primary', 'w-full')}">${Icon('sync')}<span>Girando</span></button>
+      </div>`,
+    result: () => `
+      <div class="space-y-3 text-center">
+        <p class="text-sm text-ink-soft">Ha tocado a</p>
+        <div class="flex flex-col items-center justify-center gap-1 h-28 px-3 rounded-ui bg-success-soft text-success">
+          <span class="max-w-full text-2xl font-bold truncate">${esc(wheel.winner ? wheel.winner.nombre : '')}</span>
+          <span class="text-xl font-semibold tabular-nums">+${wheel.bonus} puntos</span>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" data-spin class="${btnClass('outline')}">${Icon('replay')}<span>Otra vez</span></button>
+          <button type="button" data-wheel-add class="${btnClass('primary', 'flex-1')}">${Icon('add_shopping_cart')}<span>Añadir al carrito</span></button>
+        </div>
+      </div>`,
+    sinAlumnos: () => renderEmpty('sinAlumnos')
+  };
+  const getWheelPhase = () => (S.alumnos.length ? wheel.phase : 'sinAlumnos');
 
   /* ======================= 4. RENDER ======================= */
   function renderList() {
     const key = S.alumnos.length ? 'lista' : 'vacio';
     $('#list').innerHTML = resolve(LIST_VIEWS, key, 'vacio')({ alumnos: S.alumnos, sim: simulate() });
     $('#selinfo').textContent = resolve(SELECTION_LABELS, selected.size ? 'some' : 'none', 'none')(selected.size);
+  }
+
+  function renderMotives() {
+    const reglas = [...S.reglas].sort((a, b) => b.puntos - a.puntos);
+    $('#motives').innerHTML = resolve(MOTIVES, reglas.length ? 'lista' : 'vacio', 'vacio')(reglas);
   }
 
   function renderCartCount() {
@@ -244,6 +342,7 @@
 
   function render() {
     renderList();
+    renderMotives();
     renderCartCount();
     renderBanner();
     if ($('#sheet-cart').classList.contains('open')) renderCart();
@@ -256,20 +355,103 @@
     renderList();
   }
 
-  function addMov(tipo, delta) {
-    if (sending) return;
-    if (!selected.size) return toast('Primero toca a uno o más alumnos', 'err');
-    const n = selected.size;
-    selected.forEach((id) => S.cart.push({ id: uid(), alumnoId: id, tipo, delta: tipo === 'reset' ? 0 : delta, nota: '' }));
-    selected.clear();
+  function addMov(m, ids) {
+    if (sending) return false;
+    const targets = ids || [...selected];
+    if (!targets.length) {
+      toast('Primero toca a uno o más alumnos', 'err');
+      return false;
+    }
+    targets.forEach((id) => S.cart.push({ id: uid(), alumnoId: id, tipo: m.tipo, delta: m.tipo === 'reset' || m.tipo === 'insignia' ? 0 : m.delta, nota: m.nota || '', ref: m.ref || '' }));
+    if (!ids) selected.clear();
     persist();
     render();
     haptic();
-    toast(tipo === 'reset' ? `A cero añadido (${n})` : `${fmt(delta)} añadido al carrito (${n})`, 'ok');
+    return targets.length;
+  }
+
+  const ADD_MESSAGES = {
+    reset: (m, n) => `A cero añadido (${n})`,
+    insignia: (m, n) => `Insignia añadida (${n})`,
+    ruleta: (m, n) => `Ruleta: ${fmt(m.delta)} añadido al carrito`,
+    delta: (m, n) => `${m.nota ? m.nota + ' ' : ''}${fmt(m.delta)} añadido al carrito (${n})`
+  };
+  function addWithToast(m, ids) {
+    const n = addMov(m, ids);
+    if (n) toast(resolve(ADD_MESSAGES, m.tipo, 'delta')(m, n), 'ok');
+    return n;
   }
 
   function quick(value) {
-    value === 'reset' ? addMov('reset', 0) : addMov('delta', parseInt(value, 10));
+    value === 'reset' ? addWithToast({ tipo: 'reset' }) : addWithToast({ tipo: 'delta', delta: parseInt(value, 10) });
+  }
+
+  function addMotivo(id) {
+    const r = S.reglas.find((x) => x.id === id);
+    if (r) addWithToast({ tipo: 'delta', delta: r.puntos, nota: r.nombre });
+  }
+
+  /* ---- Insignias ---- */
+  function renderBadgeSheet() {
+    const kind = getBadgeSheetKind();
+    $('#badge-body').innerHTML = resolve(BADGE_SHEET, kind, 'vacio')(selected.size);
+  }
+  function openBadges() {
+    renderBadgeSheet();
+    openSheet('sheet-badge');
+  }
+  function addInsignia(id) {
+    const ins = findInsignia(id);
+    if (!ins) return;
+    // Quien ya la tiene no se repite
+    const ids = [...selected].filter((aid) => {
+      const a = findAlumno(aid);
+      return a && !(a.insignias || []).includes(id) && !S.cart.some((m) => m.tipo === 'insignia' && m.ref === id && m.alumnoId === aid);
+    });
+    closeSheet('sheet-badge');
+    if (!ids.length) return toast('Los seleccionados ya tienen esa insignia', 'info');
+    selected.clear();
+    addWithToast({ tipo: 'insignia', nota: ins.nombre, ref: id }, ids);
+  }
+
+  /* ---- Ruleta ---- */
+  function renderWheel() {
+    $('#wheel-body').innerHTML = resolve(WHEEL_PHASES, getWheelPhase(), 'idle')();
+  }
+  function openWheel() {
+    clearInterval(wheelTimer);
+    wheel = { phase: 'idle', name: '', winner: null, bonus: 0 };
+    renderWheel();
+    openSheet('sheet-wheel');
+  }
+  function spinWheel() {
+    const pool = wheelPool();
+    if (!pool.length || wheel.phase === 'spinning') return;
+    const winner = pool[randInt(pool.length)];
+    const bonuses = wheelBonuses();
+    const bonus = bonuses[randInt(bonuses.length)];
+    wheel = { phase: 'spinning', name: pool[randInt(pool.length)].nombre, winner, bonus };
+    renderWheel();
+    let ticks = 0;
+    clearInterval(wheelTimer);
+    wheelTimer = setInterval(() => {
+      ticks++;
+      if (ticks >= 22) {
+        clearInterval(wheelTimer);
+        wheel.phase = 'result';
+      } else {
+        wheel.name = pool[randInt(pool.length)].nombre;
+      }
+      renderWheel();
+    }, 100);
+  }
+  function wheelToCart() {
+    if (wheel.phase !== 'result' || !wheel.winner) return;
+    const w = wheel.winner;
+    const b = wheel.bonus;
+    closeSheet('sheet-wheel');
+    wheel.phase = 'idle';
+    addWithToast({ tipo: 'ruleta', delta: b, nota: 'Ruleta' }, [w.id]);
   }
 
   function customAmount(sign) {
@@ -278,7 +460,7 @@
     if (!v || v < 1) return toast('Escribe un número mayor que 0', 'err');
     if (v > 10000) return toast('Valor demasiado grande', 'err');
     if (!selected.size) return toast('Primero toca a uno o más alumnos', 'err');
-    addMov('delta', sign * v);
+    addWithToast({ tipo: 'delta', delta: sign * v });
     inp.value = '';
     inp.blur();
   }
@@ -345,15 +527,19 @@
     const snapshot = clone({ alumnos: S.alumnos, cart: S.cart });
 
     // 2) batchId idempotente: si reintentamos el MISMO carrito, reutilizamos el id
-    const sig = JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta]));
+    const sig = JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '']));
     const batchId = S.pending && S.pending.sig === sig ? S.pending.id : uid();
     S.pending = { id: batchId, sig };
 
-    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '' }));
+    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '' }));
 
     // 3) Actualizacion OPTIMISTA: aplicamos saldos y vaciamos el carrito al instante
     const sim = simulate();
     S.alumnos.forEach((a) => (a.puntos = sim[a.id].now));
+    S.cart.forEach((c) => {
+      const a = findAlumno(c.alumnoId);
+      if (a && c.tipo === 'insignia' && !(a.insignias || []).includes(c.ref)) a.insignias = (a.insignias || []).concat(c.ref);
+    });
     S.cart = [];
     persist();
     closeSheet('sheet-cart');
@@ -362,12 +548,14 @@
     try {
       // 4) Envio al ledger (Google Apps Script)
       const res = await apiPost({ action: 'batch', batchId, movimientos });
-      if (res.alumnos) S.alumnos = res.alumnos; // la verdad del servidor
+      applyServer(res); // la verdad del servidor
       S.pending = null;
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
       const n = movimientos.length;
-      toast(`${n} ${n === 1 ? 'movimiento enviado' : 'movimientos enviados'}`, 'ok');
+      const bonos = res.bonificaciones || [];
+      const extra = bonos.length ? '. Racha: ' + bonos.map((b) => `${(findAlumno(b.alumnoId) || { nombre: '' }).nombre} +${b.bonus}`).join(', ') : '';
+      toast(`${n} ${n === 1 ? 'movimiento enviado' : 'movimientos enviados'}${extra}`, 'ok');
     } catch (err) {
       // 5) ROLLBACK: restauramos estado local e interfaz al snapshot anterior
       console.error('Envio fallido:', err);
@@ -387,8 +575,8 @@
     if (sending) return;
     try {
       const r = await apiGet();
-      const changed = JSON.stringify(r.alumnos) !== JSON.stringify(S.alumnos);
-      S.alumnos = r.alumnos;
+      const changed = JSON.stringify(pickState(r)) !== JSON.stringify(pickState(S));
+      applyServer(r);
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
       if (changed) render();
@@ -412,6 +600,12 @@
     ['[data-banner-close]', () => { S.banner = null; renderBanner(); }],
     ['[data-demo-reset]', () => resetDemoData()],
     ['[data-al]', (el) => toggleStudent(el.dataset.al)],
+    ['[data-motivo]', (el) => addMotivo(el.dataset.motivo)],
+    ['[data-ins]', (el) => addInsignia(el.dataset.ins)],
+    ['[data-spin]', () => spinWheel()],
+    ['[data-wheel-add]', () => wheelToCart()],
+    ['#btn-wheel', () => openWheel()],
+    ['#btn-badge', () => openBadges()],
     ['[data-q]', (el) => quick(el.dataset.q)],
     ['#custom-add', () => customAmount(1)],
     ['#custom-sub', () => customAmount(-1)],

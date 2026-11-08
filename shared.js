@@ -2,9 +2,15 @@
  * shared.js - Utilidades comunes y capa de API (Google Apps Script o MODO DEMO)
  * Compartido por profesor.html y pantalla.html. No toca el DOM.
  *
- * Contrato de datos (igual en demo y en produccion):
- *   apiGet()  -> { ok, alumnos:[{id,nombre,icono,puntos}], premios:[{id,nombre,coste,icono}] }
- *   apiPost() -> { ok, alumnos:[...] }
+ * Contrato de datos (igual en demo y en produccion). Todas las respuestas son el ESTADO completo:
+ *   { ok, alumnos:[{id,nombre,avatar,color,puntos,racha,insignias,pendientes}],
+ *     reglas:[{id,nombre,puntos,icono,descripcion}], premios:[{id,nombre,coste,icono,descripcion,efecto}],
+ *     insignias:[{id,nombre,icono,descripcion}], reto:{nombre,meta,progreso,premio,icono,logrado}|null,
+ *     config:{rachaHito,rachaBonus,ruletaBonus,avatares,colores}, ts }
+ * apiPost() devuelve ademas { bonificaciones:[{alumnoId,racha,bonus}] }.
+ *
+ * MODO DEMO: datos-prueba.json es un volcado de las pestanas de la hoja (alumnos, reglasYPremios,
+ * config, movimientos). El estado se calcula con Engine (engine.js), el MISMO motor que lleva Code.gs.
  */
 (function () {
   'use strict';
@@ -41,6 +47,10 @@
     }
   };
 
+  /** Escoge y devuelve del estado solo lo que pinta la interfaz (para comparar y guardar). */
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'config'];
+  const pickState = (r) => STATE_KEYS.reduce((o, k) => ((o[k] = r[k] === undefined ? null : r[k]), o), {});
+
   /* ---------- Red ---------- */
   const isDemo = () => !CFG.APPS_SCRIPT_URL;
 
@@ -59,46 +69,20 @@
     }
   }
 
-  /* ---------- MODO DEMO: simula el servidor con datos-prueba.json + localStorage ---------- */
-  const DEMO_KEY = 'demo_db_v2';
+  /* ---------- MODO DEMO ---------- */
+  const DEMO_KEY = 'demo_db_v3';
+  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const demoCtx = () => ({ now: new Date(), fmtDay: (d) => dayFmt.format(d), uuid: uid });
 
-  /** Carga la base demo; la primera vez la siembra desde el JSON de prueba. */
-  async function demoDB() {
-    let db = store.get(DEMO_KEY, null);
-    if (!db) {
+  /** Tablas de la hoja simulada. La primera vez se siembran desde datos-prueba.json. */
+  async function demoTables() {
+    let t = store.get(DEMO_KEY, null);
+    if (!t) {
       const r = await fetchTimeout(CFG.DEMO_DATA_URL || 'datos-prueba.json', { cache: 'no-cache' }, 8000);
-      const seed = await r.json();
-      db = { alumnos: seed.alumnos, premios: seed.premios, batches: [] };
-      store.set(DEMO_KEY, db);
+      t = await r.json();
+      store.set(DEMO_KEY, t);
     }
-    return db;
-  }
-
-  /** Aplica una operacion igual que Code.gs: valida, es idempotente por batchId y devuelve los saldos. */
-  async function demoApply(p) {
-    const db = await demoDB();
-    if (db.batches.indexOf(p.batchId) === -1) {
-      if (p.action === 'batch') {
-        p.movimientos.forEach((m) => {
-          if (!db.alumnos.some((a) => a.id === m.alumnoId)) throw new Error('Alumno no encontrado');
-        });
-        p.movimientos.forEach((m) => {
-          const a = db.alumnos.find((x) => x.id === m.alumnoId);
-          a.puntos = m.tipo === 'reset' ? 0 : a.puntos + m.delta;
-        });
-      } else if (p.action === 'canje') {
-        const a = db.alumnos.find((x) => x.id === p.alumnoId);
-        const pr = db.premios.find((x) => x.id === p.premioId);
-        if (!a || !pr) throw new Error('Datos no validos');
-        if (a.puntos < pr.coste) throw new Error('Saldo insuficiente');
-        a.puntos -= pr.coste;
-      } else {
-        throw new Error('Accion desconocida');
-      }
-      db.batches.push(p.batchId);
-      store.set(DEMO_KEY, db);
-    }
-    return { ok: true, alumnos: clone(db.alumnos) };
+    return t;
   }
 
   /** Vuelve a los datos del JSON de prueba. */
@@ -106,12 +90,26 @@
     store.del(DEMO_KEY);
   }
 
+  async function demoPost(payload) {
+    const t = await demoTables();
+    const ctx = demoCtx();
+    const res = Engine.applyAction(t, payload, ctx); // valida igual que Code.gs; lanza Error si no es valido
+    if (!res.duplicado) {
+      res.patches.forEach((p) => {
+        const a = t.alumnos.find((x) => String(x.id) === p.alumnoId);
+        if (a) { a.avatar = p.avatar; a.color = p.color; }
+      });
+      t.movimientos.push(...res.rows);
+      store.set(DEMO_KEY, t);
+    }
+    return Object.assign({ ok: true, duplicado: res.duplicado, bonificaciones: res.bonificaciones }, Engine.computeState(t, ctx));
+  }
+
   /* ---------- API publica ---------- */
   async function apiGet() {
     if (isDemo()) {
       await sleep(150);
-      const db = await demoDB();
-      return { ok: true, alumnos: clone(db.alumnos), premios: clone(db.premios) };
+      return Object.assign({ ok: true }, Engine.computeState(await demoTables(), demoCtx()));
     }
     const url = CFG.APPS_SCRIPT_URL + '?token=' + encodeURIComponent(CFG.TOKEN) + '&_=' + Date.now();
     const r = await fetchTimeout(url, { method: 'GET' });
@@ -122,8 +120,9 @@
 
   /**
    * Envia una operacion. payload:
-   *  { action:'batch', batchId, movimientos:[{alumnoId,tipo:'delta'|'reset',delta,nota}] }
-   *  { action:'canje', batchId, alumnoId, premioId }
+   *  { action:'batch',  batchId, movimientos:[{alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}] }
+   *  { action:'canje',  batchId, alumnoId, premioId }
+   *  { action:'perfil', batchId, alumnoId, avatar, color }
    * El batchId hace la operacion idempotente: reintentar no duplica movimientos.
    */
   async function apiPost(payload) {
@@ -131,7 +130,7 @@
     if (isDemo()) {
       await sleep(500);
       if (store.get('demo_fail', false)) throw new Error('Fallo de red simulado');
-      return demoApply(payload);
+      return demoPost(payload);
     }
     // text/plain evita el preflight CORS que Apps Script no soporta
     const r = await fetchTimeout(CFG.APPS_SCRIPT_URL, {
@@ -145,5 +144,5 @@
     return j;
   }
 
-  window.TP = { CFG, sleep, uid, clone, esc, store, isDemo, apiGet, apiPost, resetDemo };
+  window.TP = { CFG, sleep, uid, clone, esc, store, isDemo, apiGet, apiPost, resetDemo, pickState };
 })();

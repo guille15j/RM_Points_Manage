@@ -20,8 +20,8 @@
   <header class="sticky top-0 z-30 bg-surface border-b border-line" style="padding-top: env(safe-area-inset-top)">
     <div class="flex items-center gap-4 px-6 py-3">
       <div class="flex items-center gap-3 flex-1 min-w-0">
-        <span class="flex items-center justify-center w-12 h-12 rounded-ui bg-primary text-on-primary"><span class="icon icon-fill text-3xl">paid</span></span>
-        <h1 class="hidden min-[900px]:block text-xl font-bold truncate">Puntos de clase</h1>
+        <span class="flex items-center justify-center w-12 h-12 rounded-ui bg-primary text-on-primary"><span class="icon icon-fill text-3xl">star</span></span>
+        <h1 class="hidden min-[1200px]:block text-xl font-bold truncate">Puntos de clase</h1>
       </div>
       <nav id="tabs" class="flex gap-2" aria-label="Secciones"></nav>
       <div id="status"></div>
@@ -37,9 +37,16 @@
     <div id="dlg-body" class="sheet-panel w-full max-w-xl p-8 rounded-ui-lg bg-surface border border-line shadow-xl"></div>
   </div>
 
+  <!-- Editor de identidad (se abre al canjear Personalizar mi tarjeta) -->
+  <div id="sheet-custom" class="sheet items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="custom-title">
+    <div class="sheet-bg"></div>
+    <div id="custom-body" class="sheet-panel flex flex-col w-full max-w-2xl max-h-[92dvh] overflow-y-auto p-6 rounded-ui-lg bg-surface border border-line shadow-xl"></div>
+  </div>
+
   <div id="toast-root" class="fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4 pointer-events-none" style="top: calc(env(safe-area-inset-top) + 5.5rem)"></div>
 
   <script src="config.js"></script>
+  <script src="engine.js"></script>
   <script src="shared.js"></script>
   <script src="ui.js"></script>
   <script src="pantalla.js"></script>

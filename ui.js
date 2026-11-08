@@ -30,16 +30,61 @@
     return `<span class="icon${fill ? ' icon-fill' : ''}${cls ? ' ' + cls : ''}" aria-hidden="true">${esc(name)}</span>`;
   }
 
+  /* ---------- Colores de identidad del alumno (los elige al personalizar su tarjeta) ---------- */
+  const COLOR_STYLES = {
+    base: { label: 'Blanco', card: 'bg-surface border-line', avatar: 'bg-primary-soft text-primary', swatch: 'bg-surface border-2 border-line' },
+    azul: { label: 'Azul', card: 'bg-sky-50 border-sky-200', avatar: 'bg-sky-100 text-sky-700', swatch: 'bg-sky-300' },
+    verde: { label: 'Verde', card: 'bg-emerald-50 border-emerald-200', avatar: 'bg-emerald-100 text-emerald-700', swatch: 'bg-emerald-300' },
+    turquesa: { label: 'Turquesa', card: 'bg-teal-50 border-teal-200', avatar: 'bg-teal-100 text-teal-700', swatch: 'bg-teal-300' },
+    amarillo: { label: 'Amarillo', card: 'bg-yellow-50 border-yellow-200', avatar: 'bg-yellow-100 text-yellow-700', swatch: 'bg-yellow-300' },
+    naranja: { label: 'Naranja', card: 'bg-orange-50 border-orange-200', avatar: 'bg-orange-100 text-orange-700', swatch: 'bg-orange-300' },
+    rosa: { label: 'Rosa', card: 'bg-pink-50 border-pink-200', avatar: 'bg-pink-100 text-pink-700', swatch: 'bg-pink-300' },
+    violeta: { label: 'Violeta', card: 'bg-violet-50 border-violet-200', avatar: 'bg-violet-100 text-violet-700', swatch: 'bg-violet-300' },
+    arena: { label: 'Arena', card: 'bg-stone-100 border-stone-300', avatar: 'bg-stone-200 text-stone-700', swatch: 'bg-stone-300' }
+  };
+  const colorStyle = (key) => resolve(COLOR_STYLES, key, 'base');
+
   /* ---------- Avatar de alumno ---------- */
   const AVATAR_SIZES = {
     sm: { box: 'w-10 h-10', icon: 'text-2xl' },
     md: { box: 'w-12 h-12', icon: 'text-3xl' },
     lg: { box: 'w-16 h-16', icon: 'text-4xl' }
   };
-  function Avatar({ icono, size }) {
+  function Avatar({ icono, color, size }) {
     const s = resolve(AVATAR_SIZES, size, 'md');
-    return `<span class="flex items-center justify-center shrink-0 rounded-full bg-primary-soft text-primary ${s.box}">${Icon(safeIcon(icono, 'person'), s.icon)}</span>`;
+    return `<span class="flex items-center justify-center shrink-0 rounded-full ${colorStyle(color).avatar} ${s.box}">${Icon(safeIcon(icono, 'person'), s.icon)}</span>`;
   }
+
+  /* ---------- Racha ---------- */
+  const STREAK_CHIPS = {
+    activa: ({ racha }) =>
+      `<span class="inline-flex items-center gap-1 px-2 h-8 rounded-full bg-attention-soft text-attention font-bold" title="Racha de ${racha} clases">${Icon('local_fire_department', 'text-xl', true)}<span class="tabular-nums">${racha}</span><span class="sr-only"> clases seguidas</span></span>`,
+    ninguna: () => ''
+  };
+  const getStreakKind = ({ racha }) => (racha >= 2 ? 'activa' : 'ninguna');
+  const renderStreak = (alumno) => resolve(STREAK_CHIPS, getStreakKind(alumno), 'ninguna')(alumno);
+
+  /* ---------- Insignias ---------- */
+  const BADGE_ICON = ({ ins }) =>
+    `<span class="flex items-center justify-center shrink-0 w-8 h-8 rounded-full border border-line bg-surface text-primary" title="${esc(ins.nombre)}">${Icon(safeIcon(ins.icono, 'military_tech'), 'text-xl')}<span class="sr-only">${esc(ins.nombre)}</span></span>`;
+  const BADGE_MORE = {
+    si: (n) => `<span class="text-sm font-bold text-ink-soft">+${n}</span>`,
+    no: () => ''
+  };
+  /** ids: insignias del alumno; catalog: lista completa; max: cuantas se muestran. */
+  function renderBadges({ ids, catalog, max }) {
+    const all = (ids || []).map((id) => catalog.find((i) => i.id === id)).filter(Boolean);
+    const shown = all.slice(0, max || 4);
+    const extra = all.length - shown.length;
+    return shown.map((ins) => BADGE_ICON({ ins })).join('') + resolve(BADGE_MORE, extra > 0 ? 'si' : 'no', 'no')(extra);
+  }
+
+  /* ---------- Notas (descripcion) ---------- */
+  const NOTES = {
+    con: (text, cls) => `<p class="${cls || 'text-ink-soft'}">${esc(text)}</p>`,
+    sin: () => ''
+  };
+  const renderNote = (text, cls) => resolve(NOTES, text ? 'con' : 'sin', 'sin')(text, cls);
 
   /* ---------- Botones ---------- */
   const BTN_VARIANTS = {
@@ -85,6 +130,7 @@
   const EMPTY_STATES = {
     sinAlumnos: makeEmpty('groups', 'Todavía no hay alumnos', 'Pulsa el botón de actualizar.'),
     sinPremios: makeEmpty('redeem', 'No hay premios', 'Pide a tu profe que los añada.'),
+    sinReglas: makeEmpty('rule', 'Todavía no hay reglas', 'Tu profe las añadirá pronto.'),
     carritoVacio: makeEmpty('shopping_cart', 'El carrito está vacío', 'Selecciona alumnos y pulsa una acción.')
   };
   const renderEmpty = (key) => resolve(EMPTY_STATES, key, 'sinAlumnos')();
@@ -109,14 +155,14 @@
     err: makeToast('error', 'bg-attention-soft text-attention border-attention/40'),
     info: makeToast('info', 'bg-surface text-ink border-line')
   };
-  /** kind: 'ok' | 'err' | 'info'. Requiere un <div id="toast-root"> en la pagina. */
   let toastTimer = null;
+  /** kind: 'ok' | 'err' | 'info'. Requiere un <div id="toast-root"> en la pagina. */
   function toast(msg, kind) {
     const root = document.getElementById('toast-root');
     if (!root) return;
     clearTimeout(toastTimer);
     root.innerHTML = resolve(TOASTS, kind, 'info')(msg); // un solo aviso a la vez: el nuevo sustituye al anterior
-    toastTimer = setTimeout(() => (root.innerHTML = ''), kind === 'err' ? 6000 : 2500);
+    toastTimer = setTimeout(() => (root.innerHTML = ''), kind === 'err' ? 6000 : 3000);
   }
 
   /* ---------- Hojas modales ---------- */
@@ -124,7 +170,7 @@
   const closeSheet = (id) => document.getElementById(id).classList.remove('open');
 
   window.UI = {
-    resolve, safeIcon, Icon, Avatar, btnClass, IconButton, Segmented, ProgressBar,
-    renderEmpty, renderStatus, toast, openSheet, closeSheet
+    resolve, safeIcon, Icon, COLOR_STYLES, colorStyle, Avatar, renderStreak, renderBadges, renderNote,
+    btnClass, IconButton, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet
   };
 })();

@@ -142,6 +142,7 @@ html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
 
 /* Rejillas que se adaptan al ancho (iPad vertical u horizontal) */
 .grid-fit { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--fit-min, 11rem), 1fr)); }
+.grid-fit-xs { --fit-min: 4rem; }
 .grid-fit-sm { --fit-min: 9rem; }
 .grid-fit-md { --fit-min: 11rem; }
 .grid-fit-lg { --fit-min: 14rem; }
@@ -155,6 +156,6 @@ html.theme-profesor .sheet-panel { animation: sheet-in .16s ease-out; }
 @keyframes sheet-in { from { transform: translateY(1.25rem); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* Espacio inferior para que el dock del profesor no tape la lista */
-.has-dock { padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)); }
+.has-dock { padding-bottom: calc(13.75rem + env(safe-area-inset-bottom)); }
 
 ::-webkit-scrollbar { width: 0; height: 0; }

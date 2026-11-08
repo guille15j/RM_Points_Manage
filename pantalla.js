@@ -3,37 +3,45 @@
  *
  * Pensada para ninos de 1.o a 6.o de primaria, incluidos alumnos con TEA:
  *  - Un solo objetivo por pantalla y pasos siempre en el mismo orden.
+ *  - Tres secciones fijas: Puntos, Canjear y Reglas (tabla de lo que suma y resta).
  *  - Canjear va en dos pasos: 1) quien eres  2) elige tu premio  (+ confirmacion).
  *  - Los premios bloqueados no son botones: muestran cuanto falta, con barra de progreso.
- *  - Despues de canjear se vuelve al paso 1 (terminal compartido).
+ *  - "Personalizar mi tarjeta" abre un editor (icono + color) justo despues de canjearlo.
  *  - Si los datos no han cambiado, no se redibuja nada (sin parpadeos al refrescar).
  *
- * Estructura del archivo:
- *   1. Estado   2. Componentes (con sus mapas)   3. Render   4. Canje   5. Sincronizacion   6. Eventos
+ * Estructura: 1. Estado  2. Componentes (con sus mapas)  3. Render  4. Canje  5. Personalizar
+ *             6. Sincronizacion  7. Eventos
  * Convencion de renderizado condicional: ver cabecera de ui.js.
  */
 (function () {
   'use strict';
-  const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost } = window.TP;
-  const { resolve, safeIcon, Icon, Avatar, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
+  const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, pickState } = window.TP;
+  const { resolve, safeIcon, Icon, Avatar, colorStyle, COLOR_STYLES, renderStreak, renderBadges, renderNote, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
   const UI_ICON = (name) => safeIcon(name, 'redeem'); // icono de premio (si el dato no es valido, usa 'redeem')
 
   /* ======================= 1. ESTADO ======================= */
-  const KEY = 'tp_pant_v2';
+  const KEY = 'tp_pant_v3';
   const saved = store.get(KEY, {});
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'config'];
   const S = {
     alumnos: saved.alumnos || [],
+    reglas: saved.reglas || [],
     premios: saved.premios || [],
+    insignias: saved.insignias || [],
+    reto: saved.reto || null,
+    config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [] },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
     sel: null,                    // alumno que canjea (no se guarda: terminal compartido)
     status: isDemo() ? 'demo' : 'off'
   };
-  let busy = false;               // canje en curso: pausa el refresco automatico
+  let busy = false;               // operacion en curso: pausa el refresco automatico
   let pendingPrize = null;        // premio pendiente de confirmar
+  let custom = null;              // editor de identidad: {alumnoId, avatar, color}
 
   const $ = (s) => document.querySelector(s);
-  const persist = () => store.set(KEY, { alumnos: S.alumnos, premios: S.premios, tab: S.tab, view: S.view });
+  const persist = () => store.set(KEY, Object.assign(pickState(S), { tab: S.tab, view: S.view }));
+  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto')) S[k] = res[k]; });
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findPremio = (id) => S.premios.find((p) => p.id === id);
@@ -45,6 +53,35 @@
   function Score({ value, size }) {
     return `<span class="inline-flex items-center gap-2 font-bold tabular-nums ${size || 'text-3xl'}">${Icon('star', 'text-[0.85em] text-primary', true)}<span>${value}</span></span>`;
   }
+  const StudentAvatar = (a, size) => Avatar({ icono: a.avatar, color: a.color, size });
+  const Badges = (a, max) => renderBadges({ ids: a.insignias, catalog: S.insignias, max });
+
+  /* ---- Reto de clase (barra comun) ---- */
+  const RETO_STATES = {
+    activo: (r) => `
+      <section class="flex items-center gap-4 p-5 mb-6 rounded-ui-lg bg-surface border border-line" aria-label="Reto de clase">
+        <span class="flex items-center justify-center shrink-0 w-14 h-14 rounded-full bg-primary-soft text-primary">${Icon(safeIcon(r.icono, 'flag'), 'text-4xl')}</span>
+        <div class="flex-1 min-w-0 space-y-2">
+          <div class="flex items-baseline justify-between gap-3">
+            <h2 class="text-xl font-bold truncate">${esc(r.nombre)}</h2>
+            <span class="text-xl font-bold tabular-nums shrink-0">${r.progreso} <span class="text-ink-soft font-normal">de ${r.meta}</span></span>
+          </div>
+          ${ProgressBar({ value: r.progreso, max: r.meta })}
+          <p class="text-ink-soft">Entre todos conseguimos: <strong class="text-ink">${esc(r.premio)}</strong></p>
+        </div>
+      </section>`,
+    logrado: (r) => `
+      <section class="flex items-center gap-4 p-5 mb-6 rounded-ui-lg bg-success-soft border border-success/30 text-success" aria-label="Reto de clase conseguido">
+        <span class="flex items-center justify-center shrink-0 w-14 h-14 rounded-full bg-surface">${Icon('check_circle', 'text-4xl', true)}</span>
+        <div class="flex-1 min-w-0">
+          <h2 class="text-xl font-bold">Lo hemos conseguido</h2>
+          <p class="text-ink">${esc(r.nombre)}: <strong>${esc(r.premio)}</strong></p>
+        </div>
+      </section>`,
+    ninguno: () => ''
+  };
+  const getRetoKind = (r) => (!r ? 'ninguno' : r.logrado ? 'logrado' : 'activo');
+  const renderReto = (r) => resolve(RETO_STATES, getRetoKind(r), 'ninguno')(r);
 
   /* ---- Vistas de puntos (3 modos conmutables) ---- */
 
@@ -54,8 +91,10 @@
       .map(
         (a) => `
       <li class="flex items-center gap-4 px-5 py-3 min-h-tap">
-        ${Avatar({ icono: a.icono, size: 'md' })}
+        ${StudentAvatar(a, 'md')}
         <span class="flex-1 min-w-0 text-xl font-bold truncate">${esc(a.nombre)}</span>
+        <span class="flex items-center gap-1.5">${Badges(a, 4)}</span>
+        ${renderStreak(a)}
         ${Score({ value: a.puntos, size: 'text-3xl' })}
       </li>`
       )
@@ -91,11 +130,15 @@
         (a) => `
       <li class="flex items-center gap-4 px-5 py-4">
         ${resolve(RANK_BADGES, getRankKind(a), 'rest')(a)}
-        ${Avatar({ icono: a.icono, size: 'md' })}
+        ${StudentAvatar(a, 'md')}
         <div class="flex-1 min-w-0 space-y-2">
-          <p class="text-xl font-bold truncate">${esc(a.nombre)}</p>
+          <div class="flex items-center gap-2">
+            <p class="text-xl font-bold truncate">${esc(a.nombre)}</p>
+            ${Badges(a, 3)}
+          </div>
           ${ProgressBar({ value: a.puntos, max: meta })}
         </div>
+        ${renderStreak(a)}
         ${Score({ value: a.puntos, size: 'text-3xl' })}
       </li>`
       )
@@ -108,11 +151,12 @@
       .sort(byName)
       .map(
         (a) => `
-      <article class="flex flex-col items-center gap-2 p-5 text-center rounded-ui-lg bg-surface border border-line">
-        ${Avatar({ icono: a.icono, size: 'lg' })}
+      <article class="flex flex-col items-center gap-2 p-5 text-center rounded-ui-lg border ${colorStyle(a.color).card}">
+        ${StudentAvatar(a, 'lg')}
         <h3 class="max-w-full text-xl font-bold truncate">${esc(a.nombre)}</h3>
         ${Score({ value: a.puntos, size: 'text-5xl' })}
         <p class="text-ink-soft">puntos</p>
+        <div class="flex flex-wrap items-center justify-center gap-1.5 min-h-[2rem]">${renderStreak(a)}${Badges(a, 4)}</div>
       </article>`
       )
       .join('');
@@ -139,12 +183,81 @@
 
   function PuntosPanel() {
     return `
+      ${renderReto(S.reto)}
       <div class="flex items-center gap-4 mb-6">
         <span class="text-ink-soft">Ver como</span>
         ${Segmented({ options: VIEW_OPTIONS, active: S.view, attr: 'data-view' })}
       </div>
       ${renderPointsView({ mode: S.view, alumnos: S.alumnos, maxCoste: maxCoste() })}`;
   }
+
+  /* ---- Reglas: tabla de referencia (viene de la pestana ReglasYPremios) ---- */
+  const RULE_TONES = {
+    suma: { chip: 'bg-success-soft text-success', sign: '+' },
+    resta: { chip: 'bg-attention-soft text-attention', sign: '−' }
+  };
+  const getRuleKind = (r) => (r.puntos >= 0 ? 'suma' : 'resta');
+
+  function RuleRow(r) {
+    const tone = resolve(RULE_TONES, getRuleKind(r), 'suma');
+    return `
+      <li class="flex items-center gap-4 px-5 py-3 min-h-tap">
+        <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full bg-surface-alt text-ink">${Icon(safeIcon(r.icono, 'rule'), 'text-3xl')}</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xl font-bold">${esc(r.nombre)}</p>
+          ${renderNote(r.descripcion, 'text-ink-soft')}
+        </div>
+        <span class="shrink-0 px-4 py-1 rounded-full text-2xl font-bold tabular-nums ${tone.chip}">${tone.sign}${Math.abs(r.puntos)}</span>
+      </li>`;
+  }
+
+  const RULE_GROUPS = {
+    suma: { title: 'Lo que suma', icon: 'add_circle', filter: (r) => r.puntos >= 0 },
+    resta: { title: 'Lo que resta', icon: 'do_not_disturb_on', filter: (r) => r.puntos < 0 }
+  };
+  const RULE_GROUP_BODY = {
+    lleno: (rows) => `<ul class="rounded-ui-lg bg-surface border border-line divide-y divide-line overflow-hidden">${rows.map(RuleRow).join('')}</ul>`,
+    vacio: () => `<p class="px-5 py-4 rounded-ui-lg bg-surface border border-line text-ink-soft">Nada por ahora.</p>`
+  };
+  function RuleGroup(key) {
+    const g = RULE_GROUPS[key];
+    const rows = S.reglas.filter(g.filter).sort((x, y) => Math.abs(y.puntos) - Math.abs(x.puntos) || x.nombre.localeCompare(y.nombre, 'es'));
+    return `
+      <section class="space-y-3">
+        <h2 class="flex items-center gap-2 text-2xl font-bold">${Icon(g.icon, 'text-3xl text-ink-soft')}${g.title}</h2>
+        ${resolve(RULE_GROUP_BODY, rows.length ? 'lleno' : 'vacio', 'vacio')(rows)}
+      </section>`;
+  }
+
+  function InfoRacha() {
+    const c = S.config;
+    return `
+      <section class="flex items-start gap-4 p-5 rounded-ui-lg bg-surface border border-line">
+        <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full bg-attention-soft text-attention">${Icon('local_fire_department', 'text-3xl', true)}</span>
+        <div>
+          <h2 class="text-2xl font-bold">Racha</h2>
+          <p class="text-ink-soft">Cada clase en la que sumas puntos, tu racha crece. Cada ${c.rachaHito} clases seguidas ganas <strong class="text-ink">+${c.rachaBonus}</strong> puntos extra.</p>
+        </div>
+      </section>`;
+  }
+
+  const BADGE_LEGEND_BODY = {
+    lleno: () => `<ul class="rounded-ui-lg bg-surface border border-line divide-y divide-line overflow-hidden">${S.insignias
+      .map((i) => `<li class="flex items-center gap-4 px-5 py-3 min-h-tap">
+          <span class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full border border-line bg-surface text-primary">${Icon(safeIcon(i.icono, 'military_tech'), 'text-3xl')}</span>
+          <div class="flex-1 min-w-0"><p class="text-xl font-bold">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-ink-soft')}</div>
+        </li>`).join('')}</ul>`,
+    vacio: () => ''
+  };
+  const BadgeLegend = () => S.insignias.length
+    ? `<section class="space-y-3"><h2 class="flex items-center gap-2 text-2xl font-bold">${Icon('military_tech', 'text-3xl text-ink-soft')}Insignias</h2>${resolve(BADGE_LEGEND_BODY, 'lleno', 'vacio')()}</section>`
+    : '';
+
+  const REGLAS_BODY = {
+    lleno: () => `<div class="max-w-3xl mx-auto space-y-8">${RuleGroup('suma')}${RuleGroup('resta')}${InfoRacha()}${BadgeLegend()}</div>`,
+    vacio: () => renderEmpty('sinReglas')
+  };
+  const ReglasPanel = () => resolve(REGLAS_BODY, S.reglas.length ? 'lleno' : 'vacio', 'vacio')();
 
   /* ---- Premios: disponible o bloqueado ---- */
 
@@ -187,6 +300,17 @@
   const renderPrizes = ({ premios, saldo }) =>
     resolve(PRIZE_LISTS, premios.length ? 'lista' : 'vacio', 'vacio')({ premios, saldo });
 
+  /* ---- Aviso: personalizacion pendiente ---- */
+  const CUSTOM_PENDING = {
+    si: () => `
+      <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg bg-primary-soft border-2 border-primary">
+        <span class="text-primary">${Icon('brush', 'text-4xl')}</span>
+        <p class="flex-1 text-xl font-bold">Tienes una personalización lista para estrenar.</p>
+        <button type="button" data-open-custom class="${btnClass('primary', 'shrink-0 text-xl')}">${Icon('palette', 'text-3xl')}<span>Personalizar</span></button>
+      </div>`,
+    no: () => ''
+  };
+
   /* ---- Canjear: pasos ---- */
 
   function StepSinDatos() {
@@ -198,8 +322,8 @@
       .sort(byName)
       .map(
         (a) => `
-      <button type="button" data-sel="${esc(a.id)}" class="pressable flex items-center gap-4 min-h-[5rem] px-4 text-left rounded-ui-lg bg-surface border-2 border-line">
-        ${Avatar({ icono: a.icono, size: 'md' })}
+      <button type="button" data-sel="${esc(a.id)}" class="pressable flex items-center gap-4 min-h-[5rem] px-4 text-left rounded-ui-lg border-2 ${colorStyle(a.color).card}">
+        ${StudentAvatar(a, 'md')}
         <span class="text-xl font-bold truncate">${esc(a.nombre)}</span>
       </button>`
       )
@@ -216,14 +340,15 @@
     const a = findAlumno(S.sel);
     return `
       <section>
-        <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg bg-surface border border-line">
-          ${Avatar({ icono: a.icono, size: 'lg' })}
+        <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg border ${colorStyle(a.color).card}">
+          ${StudentAvatar(a, 'lg')}
           <div class="flex-1 min-w-0">
             <p class="text-2xl font-bold truncate">${esc(a.nombre)}</p>
             <p class="flex items-center gap-2 text-ink-soft">Tienes ${Score({ value: a.puntos, size: 'text-2xl text-ink' })} puntos</p>
           </div>
           <button type="button" data-change class="${btnClass('outline', 'shrink-0 text-xl border-2')}">${Icon('swap_horiz', 'text-3xl')}<span>Cambiar</span></button>
         </div>
+        ${resolve(CUSTOM_PENDING, a.pendientes > 0 ? 'si' : 'no', 'no')()}
         <h2 class="text-3xl font-bold">Elige tu premio</h2>
         <p class="mt-1 mb-6 text-ink-soft">Los premios con candado todavía no se pueden canjear.</p>
         ${renderPrizes({ premios: S.premios, saldo: a.puntos })}
@@ -255,14 +380,53 @@
       </div>`;
   }
 
+  /* ---- Editor de identidad ---- */
+  const AVATAR_OPTION = {
+    on: (name) => `<button type="button" data-av="${esc(name)}" aria-pressed="true" aria-label="${esc(name.replace(/_/g, ' '))}" class="pressable flex items-center justify-center aspect-square rounded-ui border-4 border-primary bg-primary-soft text-primary">${Icon(safeIcon(name, 'person'), 'text-4xl')}</button>`,
+    off: (name) => `<button type="button" data-av="${esc(name)}" aria-pressed="false" aria-label="${esc(name.replace(/_/g, ' '))}" class="pressable flex items-center justify-center aspect-square rounded-ui border-2 border-line bg-surface text-ink">${Icon(safeIcon(name, 'person'), 'text-4xl')}</button>`
+  };
+  const COLOR_OPTION = {
+    on: (key) => `<button type="button" data-co="${esc(key)}" aria-pressed="true" aria-label="${esc(colorStyle(key).label)}" class="pressable flex items-center justify-center w-16 h-16 rounded-full border-4 border-primary ${colorStyle(key).swatch}">${Icon('check', 'text-3xl text-ink')}</button>`,
+    off: (key) => `<button type="button" data-co="${esc(key)}" aria-pressed="false" aria-label="${esc(colorStyle(key).label)}" class="pressable w-16 h-16 rounded-full border-2 border-line ${colorStyle(key).swatch}"></button>`
+  };
+
+  function CustomBody({ c, a }) {
+    const avatares = S.config.avatares.map((n) => resolve(AVATAR_OPTION, n === c.avatar ? 'on' : 'off', 'off')(n)).join('');
+    const colores = S.config.colores.map((k) => resolve(COLOR_OPTION, k === c.color ? 'on' : 'off', 'off')(k)).join('');
+    const ready = !!c.avatar && !!c.color;
+    return `
+      <div class="space-y-6">
+        <div class="flex items-center gap-5 p-4 rounded-ui-lg border ${colorStyle(c.color).card}">
+          ${Avatar({ icono: c.avatar || a.avatar, color: c.color, size: 'lg' })}
+          <div class="min-w-0">
+            <h2 id="custom-title" class="text-3xl font-bold truncate">${esc(a.nombre)}</h2>
+            <p class="text-ink-soft">Así se verá tu tarjeta.</p>
+          </div>
+        </div>
+        <section>
+          <h3 class="mb-3 text-2xl font-bold">1. Elige tu dibujo</h3>
+          <div class="grid grid-cols-6 gap-3">${avatares}</div>
+        </section>
+        <section>
+          <h3 class="mb-3 text-2xl font-bold">2. Elige tu color</h3>
+          <div class="flex flex-wrap gap-4">${colores}</div>
+        </section>
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
+          <button type="button" data-custom-save ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Guardar</span></button>
+        </div>
+      </div>`;
+  }
+
   /* ---- Navegacion por pestanas ---- */
   const TABS = {
     puntos: { label: 'Puntos', icon: 'star', Panel: PuntosPanel },
-    canje: { label: 'Canjear', icon: 'redeem', Panel: CanjePanel }
+    canje: { label: 'Canjear', icon: 'redeem', Panel: CanjePanel },
+    reglas: { label: 'Reglas', icon: 'rule', Panel: ReglasPanel }
   };
   const TAB_BUTTONS = {
-    on: (t) => `<button type="button" data-tab="${t.key}" aria-current="page" class="pressable inline-flex items-center gap-2 h-tap px-5 rounded-ui text-xl font-bold bg-primary text-on-primary">${Icon(t.icon, 'text-3xl')}<span>${t.label}</span></button>`,
-    off: (t) => `<button type="button" data-tab="${t.key}" class="pressable inline-flex items-center gap-2 h-tap px-5 rounded-ui text-xl font-bold bg-surface-alt text-ink">${Icon(t.icon, 'text-3xl')}<span>${t.label}</span></button>`
+    on: (t) => `<button type="button" data-tab="${t.key}" aria-current="page" class="pressable inline-flex items-center gap-2 h-tap px-4 rounded-ui text-xl font-bold bg-primary text-on-primary">${Icon(t.icon, 'text-3xl')}<span>${t.label}</span></button>`,
+    off: (t) => `<button type="button" data-tab="${t.key}" class="pressable inline-flex items-center gap-2 h-tap px-4 rounded-ui text-xl font-bold bg-surface-alt text-ink">${Icon(t.icon, 'text-3xl')}<span>${t.label}</span></button>`
   };
   const renderTabs = () =>
     Object.keys(TABS)
@@ -294,6 +458,12 @@
     openSheet('dlg');
   }
 
+  // Que pasa despues de un canje, segun el efecto del premio (columna efecto de la hoja)
+  const POST_REDEEM = {
+    personalizar: (id) => openCustom(id),
+    ninguno: () => { S.sel = null; } // vuelve al paso 1
+  };
+
   async function doRedeem() {
     const a = findAlumno(S.sel);
     const p = pendingPrize;
@@ -301,18 +471,20 @@
     if (!a || !p || busy) return;
     busy = true;
     const nombre = a.nombre;
+    const alumnoId = a.id;
 
     const snapshot = clone(S.alumnos);  // para el rollback
     a.puntos -= p.coste;                 // optimista: descuenta al instante
+    if (p.efecto === 'personalizar') a.pendientes = (a.pendientes || 0) + 1;
     persist();
     render();
 
     try {
-      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId: a.id, premioId: p.id });
-      if (res.alumnos) S.alumnos = res.alumnos; // la verdad del servidor
-      S.sel = null;                             // vuelve al paso 1
+      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId, premioId: p.id });
+      applyServer(res);                          // la verdad del servidor
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
+      resolve(POST_REDEEM, p.efecto, 'ninguno')(alumnoId);
       render();
       toast(`Hecho. ${nombre} ha canjeado ${p.nombre}.`, 'ok');
     } catch (err) {
@@ -328,17 +500,68 @@
     }
   }
 
-  /* ======================= 5. SINCRONIZACION ======================= */
+  /* ======================= 5. PERSONALIZAR (optimista + rollback) ======================= */
+  function renderCustom() {
+    const a = custom && findAlumno(custom.alumnoId);
+    if (!a) return;
+    $('#custom-body').innerHTML = CustomBody({ c: custom, a });
+  }
+
+  function openCustom(alumnoId) {
+    const a = findAlumno(alumnoId);
+    if (!a) return;
+    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '' };
+    renderCustom();
+    openSheet('sheet-custom');
+  }
+
+  function closeCustom() {
+    custom = null;
+    closeSheet('sheet-custom');
+    render();
+  }
+
+  async function saveCustom() {
+    if (!custom || busy || !custom.avatar || !custom.color) return;
+    busy = true;
+    const c = custom;
+    const a = findAlumno(c.alumnoId);
+    const snapshot = clone(S.alumnos);
+    // Optimista: la tarjeta cambia al instante en las tres vistas
+    a.avatar = c.avatar;
+    a.color = c.color;
+    a.pendientes = Math.max(0, (a.pendientes || 0) - 1);
+    persist();
+    render();
+    try {
+      const res = await apiPost({ action: 'perfil', batchId: uid(), alumnoId: c.alumnoId, avatar: c.avatar, color: c.color });
+      applyServer(res);
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      S.sel = null;
+      closeCustom();
+      toast('Tu tarjeta ya es nueva.', 'ok');
+    } catch (err) {
+      console.error('Personalizacion fallida:', err);
+      S.alumnos = snapshot;                     // ROLLBACK: el alumno conserva su personalizacion pendiente
+      persist();
+      setStatus('off');
+      render();
+      renderCustom();                           // el editor sigue abierto para reintentar
+      toast('No se ha podido guardar. Prueba otra vez.', 'err');
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* ======================= 6. SINCRONIZACION ======================= */
   async function refresh(manual) {
     if (busy) return;
     try {
       const r = await apiGet();
-      if (busy) return; // empezo un canje mientras esperabamos
-      const changed =
-        JSON.stringify(r.alumnos) !== JSON.stringify(S.alumnos) ||
-        JSON.stringify(r.premios || S.premios) !== JSON.stringify(S.premios);
-      S.alumnos = r.alumnos;
-      S.premios = r.premios || S.premios;
+      if (busy) return; // empezo una operacion mientras esperabamos
+      const changed = JSON.stringify(pickState(r)) !== JSON.stringify(pickState(S));
+      applyServer(r);
       if (S.sel && !findAlumno(S.sel)) S.sel = null;
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -351,10 +574,15 @@
     }
   }
 
-  /* ======================= 6. EVENTOS ======================= */
+  /* ======================= 7. EVENTOS ======================= */
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
     ['[data-confirm]', () => doRedeem()],
+    ['[data-custom-save]', () => saveCustom()],
+    ['[data-custom-later]', () => closeCustom()],
+    ['[data-av]', (el) => { custom.avatar = el.dataset.av; renderCustom(); }],
+    ['[data-co]', (el) => { custom.color = el.dataset.co; renderCustom(); }],
+    ['[data-open-custom]', () => openCustom(S.sel)],
     ['[data-close]', (el) => closeSheet(el.dataset.close)],
     ['[data-tab]', (el) => { S.tab = el.dataset.tab; persist(); render(); window.scrollTo(0, 0); }],
     ['[data-view]', (el) => { S.view = el.dataset.view; persist(); render(); }],
@@ -372,7 +600,7 @@
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   setInterval(() => {
-    if (!document.hidden && !busy && !$('#dlg').classList.contains('open')) refresh(false);
+    if (!document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
   }, CFG.POLL_MS || 15000);
 
   // Arranque: pinta lo guardado al instante y sincroniza en segundo plano
