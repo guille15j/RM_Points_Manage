@@ -194,7 +194,7 @@ const Engine = (function () {
   function cosKey(tok) {
     const m = String(tok).trim().match(/^(fondo|color|avatar|img):\s*(.+)$/i);
     const k = !m ? String(tok).trim() : { fondo: 'deg-', color: '', avatar: 'img:', img: 'img:' }[m[1].toLowerCase()] + m[2].trim();
-    return TODOS_COSMETICOS.indexOf(k) >= 0 ? k : '';
+    return TODOS_COSMETICOS.indexOf(k) >= 0 || /^img:[a-z0-9-]{1,30}(\.(png|svg))?$/.test(k) ? k : '';
   }
   /** Cosmeticos que desbloquea cada insignia: {idInsignia: [claves]} (lee la columna efecto). */
   function unlockMap(items) {
