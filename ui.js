@@ -72,10 +72,11 @@
     md: { box: 'w-12 h-12', icon: 'text-3xl' },
     lg: { box: 'w-16 h-16', icon: 'text-4xl' }
   };
-  const IMG_RE = /^[a-z0-9-]{1,30}$/;
+  const IMG_RE = /^[a-z0-9-]{1,30}(\.(png|svg))?$/;
   const AVATAR_FACES = {
     icon: (v, s) => Icon(safeIcon(v, 'person'), s.icon),
-    image: (v) => `<img src="avatares/${esc(IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot')}.svg" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`
+    // image: (v) => `<img src="avatares/${esc(IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot')}.svg" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`
+    image: (v) => { const n = IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot'; return `<img src="avatares/${esc(/\./.test(n) ? n : n + '.svg')}" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`; }
   };
   const getAvatarKind = (v) => (String(v || '').indexOf('img:') === 0 ? 'image' : 'icon');
   /** Dibujo del avatar (icono o imagen) sin burbuja; sirve para las opciones del editor. */
