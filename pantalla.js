@@ -87,7 +87,23 @@
   /* ---- Mascota de clase (boton flotante + pantalla propia) ---- */
   const SEEN_KEY = 'tp_mascota_seen_v1';              // ultima etapa que los ninos ya han visto
   const MASCOTA_ETAPAS = ['Huevo', 'Cría', 'Joven', 'Adulto', 'Leyenda'];
-  const mascotaImg = (etapa) => `mascota/etapa-${Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa)) + 1}.svg`;
+  // Imagenes: mascota/etapa-1 ... etapa-5 en .gif (animado), .png o .svg. Se prueba en ese orden
+  // y se recuerda cual existe, asi cada etapa puede estar en el formato que se quiera.
+  const MASCOTA_EXT = ['gif', 'png', 'svg'];
+  const extUsada = {};                                // etapa -> posicion en MASCOTA_EXT
+  const etapaN = (etapa) => Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa)) + 1;
+  const mascotaImg = (etapa) => `mascota/etapa-${etapaN(etapa)}.${MASCOTA_EXT[extUsada[etapaN(etapa)] || 0]}`;
+  /** <img> de la mascota (pixel art nitido). Si falta el archivo, el listener de abajo prueba el siguiente formato. */
+  const MascotaImg = (etapa, cls, alt) => `<img src="${mascotaImg(etapa)}" data-mascota="${etapaN(etapa)}" alt="${esc(alt || '')}" class="mascota-px object-contain ${cls}" draggable="false">`;
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || !img.dataset || !img.dataset.mascota) return;
+    const n = Number(img.dataset.mascota);
+    const next = (extUsada[n] || 0) + 1;
+    if (next >= MASCOTA_EXT.length) return;           // ningun formato: se queda sin imagen
+    extUsada[n] = next;
+    img.src = `mascota/etapa-${n}.${MASCOTA_EXT[next]}`;
+  }, true);
   const etapaNombre = (etapa) => MASCOTA_ETAPAS[Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa))];
   let mascotaGrow = false;                            // al abrir: la mascota ha crecido desde la ultima vez
 
@@ -102,12 +118,12 @@
   const FAB_STATES = {
     nuevo: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
-        <img src="${mascotaImg(m.etapa)}" alt="" class="w-16 h-16" draggable="false">
+        ${MascotaImg(m.etapa, 'w-16 h-16')}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-primary text-on-primary">${Icon('arrow_upward', 'text-xl', true)}</span>
       </button>`,
     normal: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}" class="pressable flex items-center justify-center w-24 h-24 rounded-full bg-surface border-2 border-line shadow-lg">
-        <img src="${mascotaImg(m.etapa)}" alt="" class="w-16 h-16" draggable="false">
+        ${MascotaImg(m.etapa, 'w-16 h-16')}
       </button>`,
     ninguno: () => ''
   };
@@ -141,7 +157,7 @@
   function MascotaBody(m) {
     const steps = MASCOTA_ETAPAS.map((n, i) => `
       <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === m.etapa ? 'aria-current="step"' : ''}>
-        <img src="${mascotaImg(i)}" alt="" class="w-14 h-14 ${i > m.etapa ? 'mascota-futura' : ''}" draggable="false">
+        ${MascotaImg(i, 'w-14 h-14 ' + (i > m.etapa ? 'mascota-futura' : ''))}
         <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${esc(n)}</span>
       </li>`).join('');
     return `
@@ -151,7 +167,7 @@
       </div>
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
-        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo"><img src="${mascotaImg(m.etapa)}" alt="${esc(m.nombre)}, etapa ${esc(etapaNombre(m.etapa))}" class="w-52 h-52" draggable="false"></div></div>
+        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa))}</div></div>
         <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
         ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
