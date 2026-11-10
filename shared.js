@@ -6,6 +6,7 @@
  *   { ok, alumnos:[{id,nombre,avatar,color,puntos,racha,insignias,pendientes}],
  *     reglas:[{id,nombre,puntos,icono,descripcion}], premios:[{id,nombre,coste,icono,descripcion,efecto}],
  *     insignias:[{id,nombre,icono,descripcion}], reto:{nombre,meta,progreso,premio,icono,logrado}|null,
+ *     mascota:{nombre,puntos,etapa,etapas,desde,hasta,falta,premio,maxima}|null,
  *     config:{rachaHito,rachaBonus,ruletaBonus,avatares,colores}, ts }
  * apiPost() devuelve ademas { bonificaciones:[{alumnoId,racha,bonus}] }.
  *
@@ -48,7 +49,7 @@
   };
 
   /** Escoge y devuelve del estado solo lo que pinta la interfaz (para comparar y guardar). */
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'config'];
   const pickState = (r) => STATE_KEYS.reduce((o, k) => ((o[k] = r[k] === undefined ? null : r[k]), o), {});
 
   /* ---------- Red ---------- */

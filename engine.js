@@ -71,6 +71,11 @@ const Engine = (function () {
     reto_premio: '',
     reto_icono: 'flag',
     reto_desde: '',
+    mascota_activa: 'true',
+    mascota_nombre: 'Chispa',
+    mascota_desde: '',
+    mascota_etapas: '0,100,300,600,1000',
+    mascota_premio: '',
     ruleta_bonus: '5,10,20',
     avatares: AVATARES.join(','),
     colores: COLORES.join(',')
@@ -107,6 +112,14 @@ const Engine = (function () {
     return Date.UTC(p[0], p[1] - 1, p[2]) / 86400000;
   }
 
+  /** Umbrales de puntos de las 5 etapas de la mascota. Deben ser 5 numeros crecientes y el primero 0. */
+  const ETAPAS_MASCOTA = 5;
+  function etapasMascota(v) {
+    const n = list(v).map(Number);
+    const ok = n.length === ETAPAS_MASCOTA && n[0] === 0 && n.every((x, i) => Number.isInteger(x) && (i === 0 || x > n[i - 1]));
+    return ok ? n : list(DEFAULTS.mascota_etapas).map(Number);
+  }
+
   /* ---------- Configuracion (pestana Config) ---------- */
   function readConfig(rows) {
     const raw = {};
@@ -129,6 +142,11 @@ const Engine = (function () {
       retoPremio: str(g('reto_premio')),
       retoIcono: str(g('reto_icono')) || 'flag',
       retoDesde: g('reto_desde'),
+      mascotaActiva: str(g('mascota_activa')).trim().toLowerCase() !== 'false',
+      mascotaNombre: str(g('mascota_nombre')).trim() || 'Chispa',
+      mascotaDesde: g('mascota_desde'),
+      mascotaEtapas: etapasMascota(g('mascota_etapas')),
+      mascotaPremio: str(g('mascota_premio')),
       ruletaBonus: bonus.length ? bonus : [5, 10, 20],
       avatares: avatares.length ? avatares : AVATARES.slice(),
       colores: colores.length ? colores : COLORES.slice()
@@ -273,17 +291,37 @@ const Engine = (function () {
       };
     });
 
-    // Reto de clase: puntos ganados desde reto_desde por los alumnos activos
-    const desde = c.retoDesde ? toDay(c.retoDesde, ctx) : '';
-    let progreso = 0;
-    led.forEach((m) => {
-      if (TIPOS_GANADOS.indexOf(m.tipo) < 0 || !idsAct[str(m.alumnoId)] || Number(m.delta) <= 0) return;
-      if (desde && toDay(m.fecha, ctx) < desde) return;
-      progreso += Number(m.delta);
-    });
+    // Puntos ganados por los alumnos activos desde un dia (sin descontar canjes ni restas)
+    const ganadosDesde = (v) => {
+      const desde = v ? toDay(v, ctx) : '';
+      let total = 0;
+      led.forEach((m) => {
+        if (TIPOS_GANADOS.indexOf(m.tipo) < 0 || !idsAct[str(m.alumnoId)] || Number(m.delta) <= 0) return;
+        if (desde && toDay(m.fecha, ctx) < desde) return;
+        total += Number(m.delta);
+      });
+      return total;
+    };
+
+    // Reto de clase
+    const progreso = ganadosDesde(c.retoDesde);
     const reto = c.retoMeta > 0
       ? { nombre: c.retoNombre, meta: c.retoMeta, progreso, premio: c.retoPremio, icono: c.retoIcono, logrado: progreso >= c.retoMeta }
       : null;
+
+    // Mascota de clase: crece con los puntos ganados por todos; nunca retrocede al restar o canjear
+    let mascota = null;
+    if (c.mascotaActiva) {
+      const pm = ganadosDesde(c.mascotaDesde);
+      const th = c.mascotaEtapas;
+      let etapa = 0;
+      th.forEach((u, i) => { if (pm >= u) etapa = i; });
+      const maxima = etapa >= th.length - 1;
+      mascota = {
+        nombre: c.mascotaNombre, puntos: pm, etapa, etapas: th.length, premio: c.mascotaPremio,
+        desde: th[etapa], hasta: maxima ? null : th[etapa + 1], falta: maxima ? 0 : th[etapa + 1] - pm, maxima
+      };
+    }
 
     // Cosmeticos que se pueden conseguir (para mostrarlos bloqueados en el editor)
     const cosmeticos = [];
@@ -302,6 +340,7 @@ const Engine = (function () {
       premios: activeItems.filter((i) => i.tipo === 'premio').map((i) => Object.assign(view(i), { coste: Number(i.puntos) || 0, efecto: str(i.efecto) || 'ninguno' })),
       insignias: activeItems.filter((i) => i.tipo === 'insignia').map((i) => Object.assign(view(i), { desbloquea: unlocks[str(i.id)] || [] })),
       reto,
+      mascota,
       config: {
         rachaHito: c.rachaHito, rachaBonus: c.rachaBonus, ruletaBonus: c.ruletaBonus, avatares: c.avatares, colores: c.colores,
         diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos

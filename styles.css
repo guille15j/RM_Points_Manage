@@ -177,6 +177,9 @@ html.theme-profesor .sheet-panel { animation: sheet-in .16s ease-out; }
 @keyframes sheet-in { from { transform: translateY(1.25rem); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* Espacio inferior para que el dock del profesor no tape la lista */
+.fab-mascota { position: fixed; z-index: 40; right: 1.5rem; bottom: calc(env(safe-area-inset-bottom) + 1.25rem); }
+.mascota-halo { background: radial-gradient(circle, rgb(var(--c-primary-soft)) 0%, rgb(var(--c-primary-soft) / .35) 70%, transparent 100%); }
+.mascota-futura { filter: grayscale(1) brightness(.55); opacity: .35; }
 .has-dock { padding-bottom: calc(13.75rem + env(safe-area-inset-bottom)); }
 
 ::-webkit-scrollbar { width: 0; height: 0; }

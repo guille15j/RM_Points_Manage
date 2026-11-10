@@ -61,7 +61,7 @@
   const colorStyle = (key) => resolve(COLOR_STYLES, key, 'base');
 
   // Nombres de los avatares imagen (el dibujo esta en avatares/<nombre>.svg)
-  const AVATAR_IMAGE_LABELS = { robot: 'Robot', androide: 'Androide', gato: 'Gato', zorro: 'Zorro', buho: 'Búho', pulpo: 'Pulpo' };
+  const AVATAR_IMAGE_LABELS = { robot: 'Robot', androide: 'Dinosaurio', gato: 'Árbol de Navidad', zorro: 'Zorro', buho: 'Búho', pulpo: 'Fútbol' };
   /** Nombre legible de un cosmetico (clave del motor) para mostrarlo en la interfaz. */
   const cosmeticLabel = (key) =>
     key.indexOf('img:') === 0 ? 'Avatar ' + (AVATAR_IMAGE_LABELS[key.slice(4)] || key.slice(4)) : (key.indexOf('deg-') === 0 ? 'Fondo ' : 'Color ') + colorStyle(key).label;
@@ -75,7 +75,6 @@
   const IMG_RE = /^[a-z0-9-]{1,30}(\.(png|svg))?$/;
   const AVATAR_FACES = {
     icon: (v, s) => Icon(safeIcon(v, 'person'), s.icon),
-    // image: (v) => `<img src="avatares/${esc(IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot')}.svg" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`
     image: (v) => { const n = IMG_RE.test(v.slice(4)) ? v.slice(4) : 'robot'; return `<img src="avatares/${esc(/\./.test(n) ? n : n + '.svg')}" alt="" class="w-full h-full object-contain p-0.5" draggable="false">`; }
   };
   const getAvatarKind = (v) => (String(v || '').indexOf('img:') === 0 ? 'image' : 'icon');

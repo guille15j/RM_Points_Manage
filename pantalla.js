@@ -22,13 +22,14 @@
   /* ======================= 1. ESTADO ======================= */
   const KEY = 'tp_pant_v3';
   const saved = store.get(KEY, {});
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'config'];
   const S = {
     alumnos: saved.alumnos || [],
     reglas: saved.reglas || [],
     premios: saved.premios || [],
     insignias: saved.insignias || [],
     reto: saved.reto || null,
+    mascota: saved.mascota || null,
     config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [], cosmeticos: [], insigniaDias: 7 },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
@@ -41,7 +42,7 @@
 
   const $ = (s) => document.querySelector(s);
   const persist = () => store.set(KEY, Object.assign(pickState(S), { tab: S.tab, view: S.view }));
-  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto')) S[k] = res[k]; });
+  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota')) S[k] = res[k]; });
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findPremio = (id) => S.premios.find((p) => p.id === id);
@@ -82,6 +83,95 @@
   };
   const getRetoKind = (r) => (!r ? 'ninguno' : r.logrado ? 'logrado' : 'activo');
   const renderReto = (r) => resolve(RETO_STATES, getRetoKind(r), 'ninguno')(r);
+
+  /* ---- Mascota de clase (boton flotante + pantalla propia) ---- */
+  const SEEN_KEY = 'tp_mascota_seen_v1';              // ultima etapa que los ninos ya han visto
+  const MASCOTA_ETAPAS = ['Huevo', 'Cría', 'Joven', 'Adulto', 'Leyenda'];
+  const mascotaImg = (etapa) => `mascota/etapa-${Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa)) + 1}.svg`;
+  const etapaNombre = (etapa) => MASCOTA_ETAPAS[Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa))];
+  let mascotaGrow = false;                            // al abrir: la mascota ha crecido desde la ultima vez
+
+  /** Primera vez en este iPad: se toma la etapa actual como vista (sin celebrar nada). */
+  function seenEtapa() {
+    const m = S.mascota;
+    let seen = store.get(SEEN_KEY, null);
+    if (seen === null && m) { seen = m.etapa; store.set(SEEN_KEY, seen); }
+    return seen === null ? 0 : seen;
+  }
+
+  const FAB_STATES = {
+    nuevo: (m) => `
+      <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
+        <img src="${mascotaImg(m.etapa)}" alt="" class="w-16 h-16" draggable="false">
+        <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-primary text-on-primary">${Icon('arrow_upward', 'text-xl', true)}</span>
+      </button>`,
+    normal: (m) => `
+      <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}" class="pressable flex items-center justify-center w-24 h-24 rounded-full bg-surface border-2 border-line shadow-lg">
+        <img src="${mascotaImg(m.etapa)}" alt="" class="w-16 h-16" draggable="false">
+      </button>`,
+    ninguno: () => ''
+  };
+  const getFabKind = (m) => (!m ? 'ninguno' : m.etapa > seenEtapa() ? 'nuevo' : 'normal');
+  function renderMascotaFab() {
+    const m = S.mascota;
+    $('#fab-mascota').innerHTML = m ? `<div class="fab-mascota">${resolve(FAB_STATES, getFabKind(m), 'ninguno')(m)}</div>` : '';
+  }
+
+  const MASCOTA_GROW = {
+    si: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-primary-soft text-primary text-xl font-bold">${Icon('auto_awesome', 'text-2xl', true)}<span>${esc(m.nombre)} ha crecido</span></p>`,
+    no: () => ''
+  };
+  const MASCOTA_PROGRESS = {
+    creciendo: (m) => `
+      <div class="space-y-2">
+        <div class="flex items-baseline justify-between gap-3">
+          <p class="text-lg font-bold">Siguiente: ${esc(etapaNombre(m.etapa + 1))}</p>
+          <p class="text-lg font-bold tabular-nums">${m.puntos - m.desde} <span class="text-ink-soft font-normal">de ${m.hasta - m.desde}</span></p>
+        </div>
+        ${ProgressBar({ value: m.puntos - m.desde, max: m.hasta - m.desde })}
+        <p class="text-ink-soft">Faltan <strong class="text-ink">${m.falta}</strong> puntos de toda la clase para que ${esc(m.nombre)} crezca.</p>
+      </div>`,
+    maxima: (m) => `
+      <p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-success-soft text-success text-lg font-bold">${Icon('check_circle', 'text-2xl', true)}<span>${esc(m.nombre)} ya es una leyenda</span></p>`
+  };
+  const MASCOTA_PREMIO = {
+    si: (m) => `<p class="text-center text-ink-soft">${m.maxima ? 'Lo hemos conseguido' : 'Entre todos conseguimos'}: <strong class="text-ink">${esc(m.premio)}</strong></p>`,
+    no: () => ''
+  };
+  function MascotaBody(m) {
+    const steps = MASCOTA_ETAPAS.map((n, i) => `
+      <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === m.etapa ? 'aria-current="step"' : ''}>
+        <img src="${mascotaImg(i)}" alt="" class="w-14 h-14 ${i > m.etapa ? 'mascota-futura' : ''}" draggable="false">
+        <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${esc(n)}</span>
+      </li>`).join('');
+    return `
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <h2 id="mascota-title" class="text-2xl font-bold truncate">${esc(m.nombre)}</h2>
+        <button type="button" data-close="sheet-mascota" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft shrink-0">${Icon('close', 'text-3xl')}</button>
+      </div>
+      <div class="space-y-5">
+        ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
+        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo"><img src="${mascotaImg(m.etapa)}" alt="${esc(m.nombre)}, etapa ${esc(etapaNombre(m.etapa))}" class="w-52 h-52" draggable="false"></div></div>
+        <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
+        ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
+        <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
+        <p class="text-center text-ink-soft">Cada punto que ganamos entre todos ayuda a ${esc(m.nombre)} a crecer.</p>
+        ${resolve(MASCOTA_PREMIO, m.premio ? 'si' : 'no', 'no')(m)}
+      </div>`;
+  }
+  const mascotaOpen = () => document.getElementById('sheet-mascota').classList.contains('open');
+  function renderMascota() {
+    if (S.mascota) $('#mascota-body').innerHTML = MascotaBody(S.mascota);
+    else closeSheet('sheet-mascota');
+  }
+  function openMascota() {
+    if (!S.mascota) return;
+    mascotaGrow = S.mascota.etapa > seenEtapa();
+    renderMascota();
+    openSheet('sheet-mascota');
+    store.set(SEEN_KEY, S.mascota.etapa);              // ya la han visto: el aviso del boton desaparece
+    renderMascotaFab();
+  }
 
   /* ---- Vistas de puntos (3 modos conmutables) ---- */
 
@@ -488,6 +578,8 @@
     $('#tabs').innerHTML = renderTabs();
     renderStatusChip();
     $('#main').innerHTML = resolve(TABS, S.tab, 'puntos').Panel();
+    renderMascotaFab();
+    if (mascotaOpen()) renderMascota();
   }
   function setStatus(kind) {
     S.status = kind;
@@ -624,6 +716,7 @@
   /* ======================= 7. EVENTOS ======================= */
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
+    ['[data-open-mascota]', () => openMascota()],
     ['[data-confirm]', () => doRedeem()],
     ['[data-custom-save]', () => saveCustom()],
     ['[data-custom-later]', () => closeCustom()],
