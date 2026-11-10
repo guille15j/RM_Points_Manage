@@ -5,7 +5,8 @@
  *  - Un solo objetivo por pantalla y pasos siempre en el mismo orden.
  *  - Tres secciones fijas: Puntos, Canjear y Reglas (tabla de lo que suma y resta).
  *  - Canjear va en dos pasos: 1) quien eres  2) elige tu premio  (+ confirmacion).
- *  - Los premios sin puntos suficientes se ven completos (que contienen, coste, cuanto falta) pero con el boton Canjear bloqueado.
+ *  - Los premios bloqueados no son botones: muestran cuanto falta, con barra de progreso.
+ *    Excepcion: Personalizar mi tarjeta se puede abrir para ver el editor, con Guardar bloqueado hasta tener los puntos.
  *  - "Personalizar mi tarjeta" abre un editor (icono + color) justo despues de canjearlo.
  *  - Si los datos no han cambiado, no se redibuja nada (sin parpadeos al refrescar).
  *
@@ -384,41 +385,43 @@
 
   /* ---- Premios: disponible o bloqueado ---- */
 
-  // Que contiene el premio: se ve igual este o no disponible, para que sepan que pueden conseguir
-  const PRIZE_NOTE = {
-    si: (p) => `<span class="text-lg text-ink-soft">${esc(p.descripcion)}</span>`,
-    no: () => ''
-  };
-  const PrizeNote = (p) => resolve(PRIZE_NOTE, p.descripcion ? 'si' : 'no', 'no')(p);
-
   function PrizeAvailable({ premio }) {
     return `
       <button type="button" data-pr="${esc(premio.id)}" class="pressable flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface border-2 border-primary">
         <span class="flex items-center justify-center w-20 h-20 rounded-full bg-primary-soft text-primary">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
         <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold">${esc(premio.nombre)}</span>
-        ${PrizeNote(premio)}
         <span class="inline-flex items-center gap-1 text-xl text-ink-soft">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
         <span class="flex items-center justify-center gap-2 w-full h-tap mt-1 rounded-ui bg-primary text-on-primary text-xl font-bold">${Icon('redeem', 'text-3xl')}Canjear</span>
       </button>`;
   }
 
-  // No disponible = la tarjeta se ve completa (icono, nombre, que contiene, coste y cuanto falta),
-  // pero el boton Canjear esta bloqueado: es lo unico que no se puede tocar.
+  // Bloqueado = no es un boton. Se ve cuanto falta y cuanto llevas.
   function PrizeLocked({ premio, saldo }) {
     return `
-      <div class="flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface border-2 border-line">
-        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-primary-soft text-primary">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
-        <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold">${esc(premio.nombre)}</span>
-        ${PrizeNote(premio)}
-        <span class="inline-flex items-center gap-1 text-xl text-ink-soft">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
-        ${ProgressBar({ value: saldo, max: premio.coste })}
-        <span class="text-lg font-bold text-ink">Te faltan ${premio.coste - saldo}</span>
-        <button type="button" disabled aria-disabled="true" class="pressable flex items-center justify-center gap-2 w-full h-tap rounded-ui bg-surface-alt text-ink-soft text-xl font-bold">${Icon('lock', 'text-3xl')}Canjear</button>
+      <div aria-disabled="true" class="flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface-alt border-2 border-line text-ink-soft">
+        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-surface text-ink-soft">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
+        <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold text-ink">${esc(premio.nombre)}</span>
+        <span class="inline-flex items-center gap-1 text-xl">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
+        ${ProgressBar({ value: saldo, max: premio.coste, track: 'bg-line' })}
+        <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}Te faltan ${premio.coste - saldo}</span>
       </div>`;
   }
 
-  const PRIZE_CARDS = { available: PrizeAvailable, locked: PrizeLocked };
-  const getPrizeState = ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : 'locked');
+  // Solo "Personalizar mi tarjeta": aunque falten puntos se puede abrir para ver el editor (Canjear sigue bloqueado)
+  function PrizePreview({ premio, saldo }) {
+    return `
+      <button type="button" data-preview-custom class="pressable flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface-alt border-2 border-line text-ink-soft">
+        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-surface text-ink-soft">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
+        <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold text-ink">${esc(premio.nombre)}</span>
+        <span class="inline-flex items-center gap-1 text-xl">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
+        ${ProgressBar({ value: saldo, max: premio.coste, track: 'bg-line' })}
+        <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}Te faltan ${premio.coste - saldo}</span>
+        <span class="inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border-2 border-line bg-surface text-ink text-lg font-bold">${Icon('visibility', 'text-3xl')}Ver cómo es</span>
+      </button>`;
+  }
+
+  const PRIZE_CARDS = { available: PrizeAvailable, preview: PrizePreview, locked: PrizeLocked };
+  const getPrizeState = ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : premio.efecto === 'personalizar' ? 'preview' : 'locked');
   function renderPrize(props) {
     return resolve(PRIZE_CARDS, getPrizeState(props), 'locked')(props);
   }
@@ -484,7 +487,7 @@
         </div>
         ${resolve(CUSTOM_PENDING, a.pendientes > 0 ? 'si' : 'no', 'no')()}
         <h2 class="text-3xl font-bold">Elige tu premio</h2>
-        <p class="mt-1 mb-6 text-ink-soft">Puedes ver todos los premios. Los que tienen el candado en Canjear todavía no se pueden pedir: mira cuántos puntos te faltan.</p>
+        <p class="mt-1 mb-6 text-ink-soft">Los premios con candado todavía no se pueden canjear.</p>
         ${renderPrizes({ premios: S.premios, saldo: a.puntos })}
       </section>`;
   }
@@ -544,6 +547,15 @@
     no: () => ''
   };
 
+  // Botones del editor: normal (tras canjear) o vista previa (sin puntos: Guardar bloqueado)
+  const CUSTOM_ACTIONS = {
+    normal: ({ ready }) => `
+          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
+          <button type="button" data-custom-save ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Guardar</span></button>`,
+    preview: ({ c }) => `
+          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>Cerrar</span></button>
+          <button type="button" disabled aria-disabled="true" class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('lock', 'text-3xl')}<span>Te faltan ${c.falta}</span></button>`
+  };
   function CustomBody({ c, a }) {
     const av = optionsOf({ tipo: 'avatar', free: S.config.avatares, a });
     const co = optionsOf({ tipo: 'color', free: S.config.colores, a });
@@ -569,8 +581,7 @@
         </section>
         ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
         <div class="grid grid-cols-2 gap-4 pt-2">
-          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
-          <button type="button" data-custom-save ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Guardar</span></button>
+          ${resolve(CUSTOM_ACTIONS, c.preview ? 'preview' : 'normal', 'normal')({ ready, c })}
         </div>
       </div>`;
   }
@@ -673,10 +684,13 @@
     $('#custom-body').innerHTML = CustomBody({ c: custom, a });
   }
 
-  function openCustom(alumnoId) {
+  // preview = el alumno aun no tiene puntos: puede mirar el editor, pero Guardar queda bloqueado
+  function openCustom(alumnoId, preview) {
     const a = findAlumno(alumnoId);
     if (!a) return;
-    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '', hint: '' };
+    const costes = S.premios.filter((p) => p.efecto === 'personalizar').map((p) => p.coste);
+    const falta = costes.length ? Math.max(0, Math.min(...costes) - a.puntos) : 0;
+    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '', hint: '', preview: !!preview && falta > 0, falta };
     renderCustom();
     openSheet('sheet-custom');
   }
@@ -688,7 +702,7 @@
   }
 
   async function saveCustom() {
-    if (!custom || busy || !custom.avatar || !custom.color) return;
+    if (!custom || custom.preview || busy || !custom.avatar || !custom.color) return;
     busy = true;
     const c = custom;
     const a = findAlumno(c.alumnoId);
@@ -751,6 +765,7 @@
     ['[data-av]', (el) => { custom.avatar = el.dataset.av; custom.hint = ''; renderCustom(); }],
     ['[data-co]', (el) => { custom.color = el.dataset.co; custom.hint = ''; renderCustom(); }],
     ['[data-open-custom]', () => openCustom(S.sel)],
+    ['[data-preview-custom]', () => openCustom(S.sel, true)],
     ['[data-close]', (el) => closeSheet(el.dataset.close)],
     ['[data-goto]', (el) => { const s = document.getElementById(el.dataset.goto); if (s) s.scrollIntoView({ block: 'start' }); }],
     ['[data-tab]', (el) => { S.tab = el.dataset.tab; persist(); render(); window.scrollTo(0, 0); }],
