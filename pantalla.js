@@ -299,7 +299,7 @@
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
         <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa), mascotaAnim && mascotaAnim.accion)}</div></div>
         <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
-        ${resolve(MASCOTA_NEED, !m.necesidad ? 'ninguna' : m.atendida ? 'atendida' : 'pendiente', 'ninguna')(m)}
+        ${resolve(MASCOTA_NEED, !m.necesidad || m.etapa < 1 ? 'ninguna' : m.atendida ? 'atendida' : 'pendiente', 'ninguna')(m)}
         ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
         ${resolve(DIARIO_BODY, m.diario && m.diario.length ? 'lleno' : 'vacio', 'vacio')(m)}
