@@ -27,7 +27,7 @@
  * REGLAS DE NEGOCIO
  *  - Saldo = suma de delta del ledger.
  *  - Dia de clase = dia con algun movimiento 'ajuste' o 'ruleta' (de cualquier alumno) que cae en
- *    uno de los dias de la semana de Config.dias_clase (1=lunes ... 7=domingo; por defecto 1,4).
+ *    uno de los dias de la semana de Config.dias_clase (1=lunes ... 7=domingo; por defecto 2,4 = martes y jueves).
  *    Los demas dias nunca cuentan ni rompen la racha. Un dia de clase sin ningun apunte es festivo.
  *  - Racha = dias de clase seguidos, hasta el mas reciente, en los que el alumno suma neto > 0.
  *    El dia en curso aun no rompe la racha mientras el alumno no tenga neto positivo.
@@ -149,7 +149,7 @@ const Engine = (function () {
     const colores = list(g('colores')).filter((c) => COLORES.indexOf(c) >= 0);
     const bonus = list(g('ruleta_bonus')).map(Number).filter((n) => Number.isInteger(n) && n > 0);
     let diasClase = str(g('dias_clase')).split(/[,;.\s]+/).filter(Boolean).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
-    if (!diasClase.length) diasClase = [1, 4];
+    if (!diasClase.length) diasClase = [2, 4];
     return {
       diasClase,
       insigniaDias: Math.max(1, int(g('insignia_dias'), 7)),
@@ -565,9 +565,39 @@ const Engine = (function () {
       return id;
     };
 
+    // Acciones de clase: sirven sueltas y tambien dentro de un lote (ven lo anadido antes en el mismo lote)
+    const cur = () => led.concat(rows);
+    const doRol = (alumnoId, accion) => {
+      const ay = ayudanteDe(cur(), (t.alumnos || []).filter(isActivo));
+      if (!ay) throw new Error('No hay alumnos');
+      if (str(alumnoId) !== str(ay.id)) throw new Error('El ayudante ha cambiado: actualiza la pantalla');
+      const confirmar = accion === 'confirmar';
+      if (!confirmar && accion !== 'saltar') throw new Error('Acción de rol no válida');
+      add(str(ay.id), 'rol', confirmar ? c.ayudantePuntos : 0, 'Ayudante de turno', 'profesor', confirmar ? 'confirmado' : 'saltado');
+    };
+    const doEstrella = (estrellaId, ok) => {
+      const pend = estrellasPendientes(cur()).filter((m) => str(m.id) === str(estrellaId))[0];
+      if (!pend) throw new Error('Esa estrella ya está resuelta');
+      add(str(pend.alumnoId), 'estrella_res', ok ? c.estrellaPuntos : 0, ok ? str(pend.nota) : 'Rechazada', 'profesor', str(pend.id));
+    };
+    const doMascota = (accion) => {
+      if (accion === 'reiniciar') {
+        add('', 'mascota', 0, 'Reinicio de la mascota', 'profesor', 'reset');
+      } else if (accion === 'cerrar_nombre') {
+        const vot = votacionNombre(cur(), items, (t.alumnos || []).filter(isActivo), c);
+        if (vot.estado !== 'abierta') throw new Error('No hay una votación abierta');
+        add('', 'mascota', 0, 'Cierre de la votación', 'profesor', 'cerrar-nombre');
+      } else {
+        throw new Error('Acción de mascota no válida');
+      }
+    };
+
     if (p.action === 'batch') {
       if (!Array.isArray(p.movimientos) || !p.movimientos.length) throw new Error('Carrito vacío');
       p.movimientos.forEach((m) => {
+        if (m.tipo === 'rol') return doRol(m.alumnoId, m.accion);            // ayudante de turno: confirmar | saltar
+        if (m.tipo === 'estrella_res') return doEstrella(m.ref, m.ok === true); // estrella amable: aprobar | rechazar
+        if (m.tipo === 'mascota') return doMascota(m.ref);                   // reiniciar | cerrar_nombre
         const id = alumnoValido(m.alumnoId);
         const nota = str(m.nota).slice(0, 80);
         if (m.tipo === 'reset') {
@@ -625,28 +655,11 @@ const Engine = (function () {
       if (led.some((m) => m.tipo === 'estrella' && str(m.ref) === id && toDay(m.fecha, ctx) === hoy)) throw new Error('Hoy ya has enviado tu estrella');
       add(para, 'estrella', 0, frase, 'tpv', id);
     } else if (p.action === 'estrella_resolver') {
-      const pend = estrellasPendientes(led).filter((m) => str(m.id) === str(p.estrellaId))[0];
-      if (!pend) throw new Error('Esa estrella ya está resuelta');
-      const ok = p.ok === true;
-      add(str(pend.alumnoId), 'estrella_res', ok ? c.estrellaPuntos : 0, ok ? str(pend.nota) : 'Rechazada', 'profesor', str(pend.id));
+      doEstrella(p.estrellaId, p.ok === true);
     } else if (p.action === 'rol') {
-      const act = (t.alumnos || []).filter(isActivo);
-      const ay = ayudanteDe(led, act);
-      if (!ay) throw new Error('No hay alumnos');
-      if (str(p.alumnoId) !== str(ay.id)) throw new Error('El ayudante ha cambiado: actualiza la pantalla');
-      const confirmar = p.accion === 'confirmar';
-      if (!confirmar && p.accion !== 'saltar') throw new Error('Acción de rol no válida');
-      add(str(ay.id), 'rol', confirmar ? c.ayudantePuntos : 0, 'Ayudante de turno', 'profesor', confirmar ? 'confirmado' : 'saltado');
+      doRol(p.alumnoId, p.accion);
     } else if (p.action === 'mascota') {
-      if (p.accion === 'reiniciar') {
-        add('', 'mascota', 0, 'Reinicio de la mascota', 'profesor', 'reset');
-      } else if (p.accion === 'cerrar_nombre') {
-        const vot = votacionNombre(led, items, (t.alumnos || []).filter(isActivo), c);
-        if (vot.estado !== 'abierta') throw new Error('No hay una votación abierta');
-        add('', 'mascota', 0, 'Cierre de la votación', 'profesor', 'cerrar-nombre');
-      } else {
-        throw new Error('Acción de mascota no válida');
-      }
+      doMascota(p.accion);
     } else if (p.action === 'perfil') {
       const id = alumnoValido(p.alumnoId);
       const avatar = str(p.avatar);

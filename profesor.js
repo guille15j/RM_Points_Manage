@@ -160,9 +160,10 @@
     loss: makeCartRow({ tone: 'text-danger', editable: 'yes', amount: (m) => fmt(m.delta), detail: 'saldo' }),
     reset: makeCartRow({ tone: 'text-ink-soft', editable: 'no', amount: () => 'A 0', detail: 'saldo' }),
     ruleta: makeCartRow({ tone: 'text-success', editable: 'no', amount: (m) => fmt(m.delta), detail: 'saldo' }),
-    insignia: makeCartRow({ tone: 'text-primary', editable: 'no', amount: () => Icon('military_tech'), detail: 'insignia' })
+    insignia: makeCartRow({ tone: 'text-primary', editable: 'no', amount: () => Icon('military_tech'), detail: 'insignia' }),
+    clase: makeCartRow({ tone: 'text-primary', editable: 'no', amount: (m) => (m.delta ? fmt(m.delta) : Icon('pets')), detail: 'insignia' })
   };
-  const MOVEMENT_KINDS = { reset: 'reset', ruleta: 'ruleta', insignia: 'insignia' };
+  const MOVEMENT_KINDS = { reset: 'reset', ruleta: 'ruleta', insignia: 'insignia', rol: 'clase', estrella_res: 'clase', mascota: 'clase' };
   const getMovementKind = (m) => MOVEMENT_KINDS[m.tipo] || (m.delta >= 0 ? 'gain' : 'loss');
 
   function CartList({ rows }) {
@@ -227,7 +228,7 @@
         <button type="button" data-close="sheet-edit" class="${btnClass('outline', 'flex-1')}">${Icon('close')}<span>Cerrar</span></button>
       </div>`;
   }
-  const EDIT_FIELDS = { gain: EditDelta, loss: EditDelta, reset: EditReset, ruleta: EditFixed, insignia: EditFixed };
+  const EDIT_FIELDS = { gain: EditDelta, loss: EditDelta, reset: EditReset, ruleta: EditFixed, insignia: EditFixed, clase: EditFixed };
 
   /* ---- Hoja de insignias ---- */
   const infoBox = (text) => `<p class="flex items-start gap-2 p-3 text-sm rounded-ui bg-surface-alt text-ink-soft">${Icon('info', 'text-xl')}<span>${text}</span></p>`;
@@ -353,7 +354,7 @@
         const before = run[mov.alumnoId] != null ? run[mov.alumnoId] : 0;
         const after = mov.tipo === 'reset' ? 0 : before + mov.delta;
         run[mov.alumnoId] = after;
-        return resolve(CART_ROWS, getMovementKind(mov), 'gain')({ mov, nombre: a ? a.nombre : 'Alumno desconocido', before, after });
+        return resolve(CART_ROWS, getMovementKind(mov), 'gain')({ mov, nombre: mov.tipo === 'mascota' ? 'Mascota' : a ? a.nombre : 'Alumno desconocido', before, after });
       })
       .join('');
     $('#cart-list').innerHTML = resolve(CART_LISTS, S.cart.length ? 'lleno' : 'vacio', 'vacio')({ rows });
@@ -392,26 +393,38 @@
   }
 
   /* ======================= CLASE: mascota, ayudante de turno, estrellas ======================= */
-  let claseBusy = false;             // una operacion de esta hoja en curso
-  let pendClase = null;              // {id,sig}: batchId del ultimo intento (reintento idempotente)
   let confirmReset = false;          // "Reiniciar" pide una segunda pulsacion
+
+  // Todo lo de esta hoja va al CARRITO y se envia en el mismo lote que los puntos.
+  const enCarrito = {
+    rol: () => S.cart.some((c) => c.tipo === 'rol'),
+    est: (id) => S.cart.some((c) => c.tipo === 'estrella_res' && c.ref === id),
+    masc: (ref) => S.cart.some((c) => c.tipo === 'mascota' && c.ref === ref)
+  };
+  const pendientesEstrellas = () => (S.estrellas || []).filter((e) => !enCarrito.est(e.id));
 
   // Punto rojo en el boton: hay algo que revisar (estrellas) o la mascota esta en peligro
   const CLASE_DOT = { si: () => $('#clase-dot').classList.remove('hidden'), no: () => $('#clase-dot').classList.add('hidden') };
-  const hayAviso = () => (S.estrellas || []).length > 0 || !!(S.mascota && S.mascota.peligro);
+  const hayAviso = () => pendientesEstrellas().length > 0 || !!(S.mascota && S.mascota.peligro);
   const renderClaseDot = () => resolve(CLASE_DOT, hayAviso() ? 'si' : 'no', 'no')();
 
+  const queuedNote = (txt) => `<p class="flex items-center gap-2 text-sm text-ink-soft">${Icon('shopping_cart', 'text-xl')}<span>${txt}</span></p>`;
   const AYUDANTE = {
     si: (ay, pts) => `
       <section class="space-y-2">
         <h3 class="flex items-center gap-2 font-semibold">${Icon('volunteer_activism', 'text-xl')}Ayudante de turno</h3>
         <p class="text-lg"><strong>${esc(ay.nombre)}</strong></p>
-        <div class="grid grid-cols-2 gap-2">
-          <button type="button" data-rol="saltar" data-al="" ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('skip_next', 'text-xl')}No está: siguiente</button>
-          <button type="button" data-rol="confirmar" ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui bg-primary text-on-primary font-semibold">${Icon('check', 'text-xl')}Hecho +${pts}</button>
-        </div>
+        ${resolve(AYUDANTE_BTNS, enCarrito.rol() ? 'enCarrito' : 'libre', 'libre')(pts)}
       </section>`,
     no: () => ''
+  };
+  const AYUDANTE_BTNS = {
+    libre: (pts) => `
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" data-rol="saltar" class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('skip_next', 'text-xl')}No está: siguiente</button>
+          <button type="button" data-rol="confirmar" class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui bg-primary text-on-primary font-semibold">${Icon('check', 'text-xl')}Hecho +${pts}</button>
+        </div>`,
+    enCarrito: () => queuedNote('Ya está en el carrito. Se aplicará al enviar.')
   };
   const ESTRELLAS = {
     lleno: (list, pts) => `
@@ -422,20 +435,21 @@
             <p><strong>${esc(e.deNombre)}</strong> a <strong>${esc(e.paraNombre)}</strong></p>
             <p class="text-ink-soft">${esc(e.frase)}</p>
             <div class="grid grid-cols-2 gap-2">
-              <button type="button" data-est-no="${esc(e.id)}" ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
-              <button type="button" data-est-ok="${esc(e.id)}" ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
+              <button type="button" data-est-no="${esc(e.id)}" class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
+              <button type="button" data-est-ok="${esc(e.id)}" class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
             </div>
           </li>`).join('')}</ul>
       </section>`,
     vacio: () => `<section class="space-y-1"><h3 class="flex items-center gap-2 font-semibold">${Icon('star', 'text-xl')}Estrellas amables</h3><p class="text-ink-soft">Nada pendiente de revisar.</p></section>`
   };
   const RESET_BTN = {
+    enCarrito: () => queuedNote('Reinicio en el carrito. Se aplicará al enviar.'),
     pide: () => `
       <div class="space-y-2">
         <p class="text-ink-soft">La mascota vuelve a ser un huevo y el progreso empieza de cero. El diario se conserva.</p>
         <div class="grid grid-cols-2 gap-2">
           <button type="button" data-reset-cancel class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Cancelar</button>
-          <button type="button" data-reset-ok ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui bg-danger text-on-primary font-semibold">Sí, reiniciar</button>
+          <button type="button" data-reset-ok class="pressable h-tap rounded-ui bg-danger text-on-primary font-semibold">Sí, añadir al carrito</button>
         </div>
       </div>`,
     normal: () => `<button type="button" data-reset-ask class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-danger font-semibold">${Icon('restart_alt', 'text-xl')}Reiniciar desde el huevo</button>`
@@ -450,7 +464,7 @@
         <h3 class="flex items-center gap-2 font-semibold">${Icon('how_to_vote', 'text-xl')}Nombre de la mascota</h3>
         <p class="text-ink-soft">Han votado ${v.votantes} de ${v.total}.</p>
         <ul class="text-sm space-y-0.5">${Object.keys(v.votos).map((o) => `<li class="flex justify-between"><span>${esc(o)}</span><span class="tabular-nums font-semibold">${v.votos[o]}</span></li>`).join('')}</ul>
-        <button type="button" data-cerrar-nombre ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('lock', 'text-xl')}Cerrar votación</button>
+        ${enCarrito.masc('cerrar_nombre') ? queuedNote('Cierre en el carrito. Se aplicará al enviar.') : `<button type="button" data-cerrar-nombre class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('lock', 'text-xl')}Cerrar votación</button>`}
       </section>`,
     otro: () => ''
   };
@@ -460,7 +474,7 @@
         <h3 class="flex items-center gap-2 font-semibold">${Icon('pets', 'text-xl')}${esc(m.nombre)}</h3>
         <p class="text-ink-soft">Etapa ${m.etapa + 1} de ${m.etapas} · ${m.puntos} puntos${m.maxima ? ' · máxima' : ''}</p>
         ${resolve(PELIGRO, m.peligro ? 'si' : 'no', 'no')(m)}
-        ${resolve(RESET_BTN, confirmReset ? 'pide' : 'normal', 'normal')()}
+        ${resolve(RESET_BTN, enCarrito.masc('reiniciar') ? 'enCarrito' : confirmReset ? 'pide' : 'normal', 'normal')()}
       </section>
       ${resolve(VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m.votacion)}`,
     no: () => `<p class="text-ink-soft">La mascota está desactivada (mascota_activa en Config).</p>`
@@ -468,9 +482,10 @@
   function renderClase() {
     const pts = (S.config && S.config.ayudantePuntos) || 2;
     const ept = (S.config && S.config.estrellaPuntos) || 2;
+    const est = pendientesEstrellas();
     $('#clase-body').innerHTML =
       resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
-      resolve(ESTRELLAS, (S.estrellas || []).length ? 'lleno' : 'vacio', 'vacio')(S.estrellas || [], ept) +
+      resolve(ESTRELLAS, est.length ? 'lleno' : 'vacio', 'vacio')(est, ept) +
       resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota);
   }
   function openClase() {
@@ -478,31 +493,20 @@
     renderClase();
     openSheet('sheet-clase');
   }
-  /** Envia una accion de esta hoja. Mismo batchId si se reintenta el mismo envio (nunca duplica). */
-  async function claseAction(payload, okMsg) {
-    if (claseBusy) return;
-    claseBusy = true;
-    renderClase();
-    const sig = JSON.stringify(payload);
-    const batchId = pendClase && pendClase.sig === sig ? pendClase.id : uid();
-    pendClase = { id: batchId, sig };
-    try {
-      const res = await apiPost(Object.assign({ batchId }, payload));
-      applyServer(res);
-      pendClase = null;
-      persist();
-      setStatus(isDemo() ? 'demo' : 'ok');
-      toast(okMsg, 'ok');
-    } catch (err) {
-      console.error('Accion de clase fallida:', err);
-      setStatus('off');
-      toast(`No se pudo enviar (${err.message}). Vuelve a pulsar.`, 'err');
-    } finally {
-      claseBusy = false;
-      confirmReset = false;
-      render();
-      renderClase();
-    }
+  function estrellaCarrito(id, ok) {
+    const e = (S.estrellas || []).find((x) => x.id === id);
+    if (!e || enCarrito.est(id)) return;
+    queueClase({ tipo: 'estrella_res', alumnoId: e.para, ref: id, ok, delta: ok ? ((S.config && S.config.estrellaPuntos) || 2) : 0,
+      nota: (ok ? 'Estrella aprobada: ' : 'Estrella rechazada: ') + e.frase }, 'Añadido al carrito');
+  }
+  /** Anade una accion de clase al carrito (sin red): se envia con el resto en un unico lote. */
+  function queueClase(mov, msg) {
+    if (sending) return;
+    S.cart.push(Object.assign({ id: uid(), delta: 0, nota: '', ref: '' }, mov));
+    confirmReset = false;
+    persist();
+    render();
+    toast(msg, 'ok');
   }
 
   /* ======================= 5. ACCIONES ======================= */
@@ -693,11 +697,11 @@
     const snapshot = clone({ alumnos: S.alumnos, cart: S.cart });
 
     // 2) batchId idempotente: si reintentamos el MISMO carrito, reutilizamos el id
-    const sig = JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '']));
+    const sig = JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '', c.accion || '', c.ok === true]));
     const batchId = S.pending && S.pending.sig === sig ? S.pending.id : uid();
     S.pending = { id: batchId, sig };
 
-    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '' }));
+    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
 
     // 3) Actualizacion OPTIMISTA: aplicamos saldos y vaciamos el carrito al instante
     const sim = simulate();
@@ -757,13 +761,18 @@
   /* ======================= 8. EVENTOS ======================= */
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
-    ['[data-rol]', (el) => claseAction({ action: 'rol', accion: el.dataset.rol, alumnoId: S.ayudante && S.ayudante.id }, el.dataset.rol === 'confirmar' ? 'Ayudante confirmado' : 'Siguiente ayudante')],
-    ['[data-est-ok]', (el) => claseAction({ action: 'estrella_resolver', estrellaId: el.dataset.estOk, ok: true }, 'Estrella aprobada')],
-    ['[data-est-no]', (el) => claseAction({ action: 'estrella_resolver', estrellaId: el.dataset.estNo, ok: false }, 'Estrella rechazada')],
-    ['[data-cerrar-nombre]', () => claseAction({ action: 'mascota', accion: 'cerrar_nombre' }, 'Votación cerrada')],
+    ['[data-rol]', (el) => {
+      const conf = el.dataset.rol === 'confirmar';
+      if (!S.ayudante || enCarrito.rol()) return;
+      queueClase({ tipo: 'rol', alumnoId: S.ayudante.id, accion: el.dataset.rol, ref: el.dataset.rol, delta: conf ? ((S.config && S.config.ayudantePuntos) || 2) : 0,
+        nota: conf ? 'Ayudante de turno: hecho' : 'Ayudante de turno: pasa al siguiente' }, 'Añadido al carrito');
+    }],
+    ['[data-est-ok]', (el) => estrellaCarrito(el.dataset.estOk, true)],
+    ['[data-est-no]', (el) => estrellaCarrito(el.dataset.estNo, false)],
+    ['[data-cerrar-nombre]', () => { if (!enCarrito.masc('cerrar_nombre')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'cerrar_nombre', nota: 'Cerrar la votación del nombre' }, 'Añadido al carrito'); }],
     ['[data-reset-ask]', () => { confirmReset = true; renderClase(); }],
     ['[data-reset-cancel]', () => { confirmReset = false; renderClase(); }],
-    ['[data-reset-ok]', () => claseAction({ action: 'mascota', accion: 'reiniciar' }, 'Mascota reiniciada')],
+    ['[data-reset-ok]', () => { if (!enCarrito.masc('reiniciar')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'reiniciar', nota: 'Reiniciar la mascota desde el huevo' }, 'Añadido al carrito'); }],
     ['#btn-clase', () => openClase()],
     ['[data-del]', (el) => deleteMov(el.dataset.del)],
     ['[data-edit]', (el) => openEdit(el.dataset.edit)],

@@ -22,12 +22,11 @@
     <div class="flex items-center gap-2 pl-4 pr-1 h-tap">
       <h1 class="flex-1 font-semibold">Puntos de clase</h1>
       <div id="status"></div>
-      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">pets</span><span id="clase-dot" class="hidden absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
       <button id="btn-refresh" type="button" aria-label="Actualizar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">sync</span></button>
     </div>
   </header>
 
-  <main class="px-3 pt-3 has-dock">
+  <main class="px-3 pt-3 has-dock" style="padding-bottom: calc(22rem + env(safe-area-inset-bottom))">
     <div id="banner"></div>
     <div class="flex items-center justify-between min-h-[2.75rem] pb-1">
       <span id="selinfo" class="text-sm text-ink-soft"></span>
@@ -36,15 +35,16 @@
         <button id="sel-none" type="button" class="pressable h-11 px-3 rounded-ui text-sm font-semibold text-primary">Ninguno</button>
       </span>
     </div>
-    <div class="grid grid-cols-2 gap-2 mb-3">
-      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-2 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
-      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-2 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
-    </div>
     <div id="list"></div>
   </main>
 
   <!-- Barra de acciones (zona del pulgar) -->
   <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
+    <div class="grid grid-cols-3 gap-2 mb-2">
+      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
+      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
+      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
+    </div>
     <div id="motives" class="grid grid-cols-4 gap-2 mb-2" aria-label="Motivos frecuentes"></div>
     <div class="grid grid-cols-5 gap-2 mb-2">
       <button type="button" data-q="-10" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
