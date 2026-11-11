@@ -78,7 +78,7 @@ const Engine = (function () {
   const TODOS_COSMETICOS = COSMETICOS.colores.concat(COSMETICOS.avatares);
 
   const DEFAULTS = {
-    dias_clase: '1,4',
+    dias_clase: '2,4',
     insignia_dias: 7,
     racha_hito: 5,
     racha_bonus: 10,
