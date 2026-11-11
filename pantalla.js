@@ -205,6 +205,7 @@
     banar: { icon: 'bathtub', pide: 'necesita un baño', verbo: (n, m) => `${n} bañó a ${m}` },
     jugar: { icon: 'sports_esports', pide: 'quiere jugar', verbo: (n, m) => `${n} jugó con ${m}` }
   };
+  let mascotaView = 'main';                           // 'main' | 'cuidar' | 'diario'
   let cuidaSel = '';                                  // alumno que cuida a la mascota (se olvida al cerrar)
   const premioDeAccion = (accion) => S.cuidados.find((p) => p.accion === accion);
   // Quien cuida: se elige al alumno y se pulsa la accion que la mascota necesita
@@ -240,10 +241,9 @@
   const MASCOTA_NEED = {
     pendiente: (m) => {
       const info = resolve(ACCION_INFO, m.necesidad, 'comer');
-      const p = premioDeAccion(m.necesidad);
-      return `<div class="flex items-start gap-3 p-4 rounded-ui-lg bg-primary-soft text-primary">
+      return `<div class="flex items-center gap-3 p-4 rounded-ui-lg bg-primary-soft text-primary">
         <span class="shrink-0">${Icon(info.icon, 'text-4xl', true)}</span>
-        <div class="space-y-1"><p class="text-xl font-bold">${esc(m.nombre)} ${info.pide}</p>${resolve(NEED_CTA, p ? 'si' : 'no', 'no')(p)}</div>
+        <p class="text-xl font-bold">${esc(m.nombre)} ${info.pide}</p>
       </div>`;
     },
     atendida: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-success-soft text-success text-lg font-bold">${Icon('check_circle', 'text-2xl', true)}<span>${esc(m.nombre)} está bien. Hasta la próxima clase.</span></p>`,
@@ -282,31 +282,57 @@
     vacio: () => ''
   };
 
-  function MascotaBody(m) {
-    // Etapas ya alcanzadas se ven; las que faltan son un misterio (unknown) aunque las imagenes esten subidas
+  const MASCOTA_HEAD = (m, back) => `
+      <div class="flex items-center justify-between gap-3 mb-3">
+        ${back ? `<button type="button" data-mascota-view="main" class="pressable inline-flex items-center gap-2 h-tap px-4 rounded-ui bg-surface-alt text-ink font-bold">${Icon('arrow_back', 'text-2xl')}<span>Volver</span></button>` : `<h2 id="mascota-title" class="text-2xl font-bold truncate">${esc(m.nombre)}</h2>`}
+        <button type="button" data-close="sheet-mascota" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft shrink-0">${Icon('close', 'text-3xl')}</button>
+      </div>`;
+  const bigBtn = (view, icon, label) => `<button type="button" data-mascota-view="${view}" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary text-lg font-bold">${Icon(icon, 'text-2xl')}<span>${label}</span></button>`;
+  // Botones de la vista principal: Cuidar solo si hay una necesidad sin atender (nunca en el huevo); Diario si hay algo que contar
+  const MASCOTA_ACTIONS = {
+    cuidar: (m) => bigBtn('cuidar', 'favorite', 'Cuidar'),
+    diario: (m) => bigBtn('diario', 'menu_book', 'Diario'),
+    nada: () => ''
+  };
+  const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1;
+  const MASCOTA_VIEWS = {
+    main: (m) => {
+      // Etapas ya alcanzadas se ven; las que faltan son un misterio (unknown) aunque las imagenes esten subidas
     const steps = MASCOTA_ETAPAS.map((n, i) => `
       <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === m.etapa ? 'aria-current="step"' : ''}>
         ${i > m.etapa ? MascotaUnknown('w-14 h-14') : MascotaImg(i, 'w-14 h-14')}
         <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${i > m.etapa ? '?' : esc(n)}</span>
       </li>`).join('');
-    return `
-      <div class="flex items-center justify-between gap-3 mb-2">
-        <h2 id="mascota-title" class="text-2xl font-bold truncate">${esc(m.nombre)}</h2>
-        <button type="button" data-close="sheet-mascota" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft shrink-0">${Icon('close', 'text-3xl')}</button>
-      </div>
+      const acciones = resolve(MASCOTA_ACTIONS, puedeCuidar(m) ? 'cuidar' : 'nada', 'nada')(m) + resolve(MASCOTA_ACTIONS, m.diario && m.diario.length ? 'diario' : 'nada', 'nada')(m);
+      return `${MASCOTA_HEAD(m, false)}
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
         <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa), mascotaAnim && mascotaAnim.accion)}</div></div>
         <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
         ${resolve(MASCOTA_NEED, !m.necesidad || m.etapa < 1 ? 'ninguna' : m.atendida ? 'atendida' : 'pendiente', 'ninguna')(m)}
-        ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
+        ${acciones ? `<div class="grid gap-3 ${puedeCuidar(m) && m.diario && m.diario.length ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>` : ''}
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
-        ${resolve(DIARIO_BODY, m.diario && m.diario.length ? 'lleno' : 'vacio', 'vacio')(m)}
+        ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         ${resolve(MASCOTA_VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m)}
-        <p class="text-center text-ink-soft">Cada punto que ganamos entre todos ayuda a ${esc(m.nombre)} a crecer.</p>
         ${resolve(MASCOTA_PREMIO, m.premio ? 'si' : 'no', 'no')(m)}
       </div>`;
+    },
+    cuidar: (m) => {
+      const p = premioDeAccion(m.necesidad);
+      const info = resolve(ACCION_INFO, m.necesidad, 'comer');
+      return `${MASCOTA_HEAD(m, true)}
+      <div class="space-y-4">
+        <p class="flex items-center gap-3 text-xl font-bold text-primary">${Icon(info.icon, 'text-4xl', true)}<span>${esc(m.nombre)} ${info.pide}</span></p>
+        ${resolve(NEED_CTA, p ? 'si' : 'no', 'no')(p)}
+      </div>`;
+    },
+    diario: (m) => `${MASCOTA_HEAD(m, true)}${resolve(DIARIO_BODY, m.diario && m.diario.length ? 'lleno' : 'vacio', 'vacio')(m)}`
+  };
+  function MascotaBody(m) {
+    // Si la vista pedida ya no tiene sentido (p. ej. ya se atendio), se vuelve a la principal
+    const v = mascotaView === 'cuidar' && !puedeCuidar(m) ? 'main' : mascotaView;
+    return resolve(MASCOTA_VIEWS, v, 'main')(m);
   }
   const mascotaOpen = () => document.getElementById('sheet-mascota').classList.contains('open');
   function renderMascota() {
@@ -318,6 +344,7 @@
     if (!S.mascota) return;
     const token = Date.now();
     mascotaAnim = { accion, token };
+    mascotaView = 'main';
     mascotaGrow = false;
     renderMascota();
     openSheet('sheet-mascota');
@@ -334,6 +361,7 @@
     if (!S.mascota) return;
     mascotaAnim = null;
     cuidaSel = '';
+    mascotaView = 'main';
     mascotaGrow = S.mascota.etapa > seenEtapa();
     renderMascota();
     openSheet('sheet-mascota');
@@ -1089,6 +1117,7 @@
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
     ['[data-open-mascota]', () => openMascota()],
+    ['[data-mascota-view]', (el) => { mascotaView = el.dataset.mascotaView; if (mascotaView !== 'cuidar') cuidaSel = ''; renderMascota(); const b = $('#mascota-body'); if (b) b.scrollTop = 0; }],
     ['[data-cuida-al]', (el) => { cuidaSel = el.dataset.cuidaAl; renderMascota(); }],
     ['[data-cuida-cambiar]', () => { cuidaSel = ''; renderMascota(); }],
     ['[data-cuida-go]', () => doCuidar()],
