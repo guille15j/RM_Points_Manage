@@ -11,7 +11,7 @@
  * TABLAS DE ENTRADA (t): cada clave es una pestana de la hoja de calculo
  *   t.alumnos         [{id,nombre,avatar,color,activo}]
  *   t.reglasYPremios  [{id,tipo,nombre,puntos,icono,efecto,descripcion,activo}]
- *                       tipo: 'regla' | 'premio' | 'insignia'
+ *                       tipo: 'regla' | 'premio' | 'insignia' | 'cuidado' (efecto: comer|acariciar|banar|jugar)
  *   t.config          [{clave,valor}]
  *   t.movimientos     [{id,fecha,batchId,alumnoId,tipo,delta,nota,origen,ref}]   <- LEDGER
  *
@@ -88,7 +88,7 @@ const Engine = (function () {
     reto_icono: 'flag',
     reto_desde: '',
     mascota_activa: 'true',
-    mascota_nombre: 'Chispa',
+    mascota_nombre: 'Mascota desconocida',
     mascota_desde: '',
     mascota_etapas: '0,100,300,600,1000',
     mascota_premio: '',
@@ -148,7 +148,7 @@ const Engine = (function () {
     const avatares = list(g('avatares'));
     const colores = list(g('colores')).filter((c) => COLORES.indexOf(c) >= 0);
     const bonus = list(g('ruleta_bonus')).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    let diasClase = list(g('dias_clase')).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
+    let diasClase = str(g('dias_clase')).split(/[,;.\s]+/).filter(Boolean).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
     if (!diasClase.length) diasClase = [1, 4];
     return {
       diasClase,
@@ -161,7 +161,7 @@ const Engine = (function () {
       retoIcono: str(g('reto_icono')) || 'flag',
       retoDesde: g('reto_desde'),
       mascotaActiva: str(g('mascota_activa')).trim().toLowerCase() !== 'false',
-      mascotaNombre: str(g('mascota_nombre')).trim() || 'Chispa',
+      mascotaNombre: str(g('mascota_nombre')).trim() || 'Mascota desconocida',
       mascotaDesde: g('mascota_desde'),
       mascotaEtapas: etapasMascota(g('mascota_etapas')),
       mascotaPremio: str(g('mascota_premio')),
@@ -187,6 +187,7 @@ const Engine = (function () {
   function dayTables(led, ctx, diasClase) {
     const days = {};
     const net = {};
+    const neg = {};
     led.forEach((m) => {
       if (TIPOS_RACHA.indexOf(m.tipo) < 0) return;
       const d = toDay(m.fecha, ctx);
@@ -195,17 +196,19 @@ const Engine = (function () {
       const id = str(m.alumnoId);
       net[id] = net[id] || {};
       net[id][d] = (net[id][d] || 0) + Number(m.delta || 0);
+      if (Number(m.delta || 0) < 0) neg[id + '|' + d] = true; // una sola resta ese dia rompe la racha
     });
-    return { days: Object.keys(days).sort(), net };
+    return { days: Object.keys(days).sort(), net, neg };
   }
 
   /** Racha actual de un alumno y dia en que empezo. 'hoy' aun no rompe la racha si no es positivo. */
   function streakOf(dt, alumnoId, hoy) {
     const mine = dt.net[str(alumnoId)] || {};
     let i = dt.days.length - 1;
-    if (i >= 0 && dt.days[i] === hoy && (mine[hoy] || 0) <= 0) i--; // el dia en curso no ha terminado
+    const ok = (d) => (mine[d] || 0) > 0 && !dt.neg[str(alumnoId) + '|' + d]; // solo puntos positivos ese dia
+    if (i >= 0 && dt.days[i] === hoy && (mine[hoy] || 0) <= 0 && !dt.neg[str(alumnoId) + '|' + hoy]) i--; // el dia en curso no ha terminado
     let n = 0;
-    while (i >= 0 && (mine[dt.days[i]] || 0) > 0) {
+    while (i >= 0 && ok(dt.days[i])) {
       n++;
       i--;
     }
@@ -283,13 +286,15 @@ const Engine = (function () {
   const splitOpciones = (v) => str(v).split(/[;|]/).map((s) => s.trim()).filter(Boolean);
   const efectoDe = (items) => {
     const m = {};
-    items.forEach((i) => { if (i.tipo === 'premio') m[str(i.id)] = str(i.efecto); });
+    items.forEach((i) => { if (i.tipo === 'premio' || i.tipo === 'cuidado') m[str(i.id)] = str(i.efecto); });
     return m;
   };
   const accionDe = (efecto) => {
-    const m = str(efecto).match(/^mascota:([a-z]+)$/);
+    const m = str(efecto).trim().match(/^(?:mascota:)?([a-z]+)$/); // en tipo 'cuidado' basta 'comer'; 'mascota:comer' tambien vale
     return m && ACCIONES_MASCOTA.indexOf(m[1]) >= 0 ? m[1] : '';
   };
+  /** Cuidado de la mascota: tipo 'cuidado' (o un premio antiguo con efecto mascota:accion). */
+  const esCuidado = (i) => (i.tipo === 'cuidado' && !!accionDe(i.efecto)) || (i.tipo === 'premio' && /^mascota:/.test(str(i.efecto)) && !!accionDe(i.efecto));
   /** Dia de clase mas reciente (hoy incluido). */
   function ultimaClase(hoy, diasClase) {
     const n = dayNum(hoy);
@@ -504,7 +509,8 @@ const Engine = (function () {
     return {
       alumnos,
       reglas: activeItems.filter((i) => i.tipo === 'regla').map((i) => Object.assign(view(i), { puntos: Number(i.puntos) || 0 })),
-      premios: activeItems.filter((i) => i.tipo === 'premio').map((i) => Object.assign(view(i), { coste: Number(i.puntos) || 0, efecto: str(i.efecto) || 'ninguno' })),
+      cuidados: activeItems.filter(esCuidado).map((i) => Object.assign(view(i), { coste: Number(i.puntos) || 0, accion: accionDe(i.efecto) })),
+      premios: activeItems.filter((i) => i.tipo === 'premio' && !esCuidado(i)).map((i) => Object.assign(view(i), { coste: Number(i.puntos) || 0, efecto: str(i.efecto) || 'ninguno' })),
       insignias: activeItems.filter((i) => i.tipo === 'insignia').map((i) => Object.assign(view(i), { desbloquea: unlocks[str(i.id)] || [] })),
       reto,
       mascota,
@@ -585,8 +591,9 @@ const Engine = (function () {
       });
     } else if (p.action === 'canje') {
       const id = alumnoValido(p.alumnoId);
-      const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.id) === str(p.premioId))[0];
+      const premio = items.filter((i) => (i.tipo === 'premio' || i.tipo === 'cuidado') && isActivo(i) && str(i.id) === str(p.premioId))[0];
       if (!premio) throw new Error('Premio no válido');
+      if (premio.tipo === 'cuidado' && !accionDe(premio.efecto)) throw new Error('Cuidado sin acción válida');
       const coste = Number(premio.puntos) || 0;
       if ((bal[id] || 0) < coste) throw new Error('Saldo insuficiente');
       const efecto = str(premio.efecto);

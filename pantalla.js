@@ -23,7 +23,7 @@
   /* ======================= 1. ESTADO ======================= */
   const KEY = 'tp_pant_v3';
   const saved = store.get(KEY, {});
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config'];
   const S = {
     alumnos: saved.alumnos || [],
     reglas: saved.reglas || [],
@@ -33,6 +33,7 @@
     mascota: saved.mascota || null,
     estrellas: saved.estrellas || [],     // solo las usa el panel del profesor
     ayudante: saved.ayudante || null,
+    cuidados: saved.cuidados || [],
     config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [], cosmeticos: [], insigniaDias: 7 },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
@@ -204,11 +205,38 @@
     banar: { icon: 'bathtub', pide: 'necesita un baño', verbo: (n, m) => `${n} bañó a ${m}` },
     jugar: { icon: 'sports_esports', pide: 'quiere jugar', verbo: (n, m) => `${n} jugó con ${m}` }
   };
-  const premioDeAccion = (accion) => S.premios.find((p) => p.efecto === 'mascota:' + accion);
+  let cuidaSel = '';                                  // alumno que cuida a la mascota (se olvida al cerrar)
+  const premioDeAccion = (accion) => S.cuidados.find((p) => p.accion === accion);
+  // Quien cuida: se elige al alumno y se pulsa la accion que la mascota necesita
+  const CUIDA_QUIEN = {
+    elegido: (a, p) => `
+      <p class="flex items-center gap-2 flex-wrap"><span class="text-ink-soft">Cuida:</span><strong>${esc(a.nombre)}</strong>
+        <button type="button" data-cuida-cambiar class="pressable px-3 h-10 rounded-ui bg-surface text-ink-soft border border-line">Cambiar</button></p>
+      <button type="button" data-cuida-go ${a.puntos >= p.coste ? '' : 'disabled'} class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui bg-primary text-on-primary font-bold">${Icon(safeIcon(p.icono, 'favorite'), 'text-2xl')}${esc(p.nombre)} (${p.coste} puntos)</button>
+      ${a.puntos >= p.coste ? '' : `<p class="text-ink-soft text-center">A ${esc(a.nombre)} le faltan ${p.coste - a.puntos} puntos.</p>`}`,
+    nadie: () => `
+      <p class="text-ink-soft">¿Quién lo cuida?</p>
+      <div class="grid-fit grid-fit-sm gap-2">${[...S.alumnos].sort(byName).map((a) => `<button type="button" data-cuida-al="${esc(a.id)}" class="pressable h-tap px-2 rounded-ui bg-surface border border-line truncate">${esc(a.nombre)}</button>`).join('')}</div>`
+  };
   const NEED_CTA = {
-    si: (p) => `<p class="text-ink-soft">Lo encuentras en <strong class="text-ink">Canjear</strong>: ${esc(p.nombre)} (${p.coste} puntos).</p>`,
+    si: (p) => resolve(CUIDA_QUIEN, findAlumno(cuidaSel) ? 'elegido' : 'nadie', 'nadie')(findAlumno(cuidaSel), p),
     no: () => ''
   };
+  /** Cuida a la mascota: reutiliza el canje normal (optimista, rollback y animacion incluidos). */
+  async function doCuidar() {
+    const a = findAlumno(cuidaSel);
+    const m = S.mascota;
+    const p = m && premioDeAccion(m.necesidad);
+    if (!a || !p || busy) return;
+    const prev = S.sel;
+    S.sel = a.id;
+    pendingPrize = Object.assign({}, p, { efecto: 'mascota:' + p.accion });
+    await doRedeem();
+    cuidaSel = '';
+    S.sel = prev;
+    render();
+    if (mascotaOpen()) renderMascota();
+  }
   const MASCOTA_NEED = {
     pendiente: (m) => {
       const info = resolve(ACCION_INFO, m.necesidad, 'comer');
@@ -305,6 +333,7 @@
   function openMascota() {
     if (!S.mascota) return;
     mascotaAnim = null;
+    cuidaSel = '';
     mascotaGrow = S.mascota.etapa > seenEtapa();
     renderMascota();
     openSheet('sheet-mascota');
@@ -1060,6 +1089,9 @@
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
     ['[data-open-mascota]', () => openMascota()],
+    ['[data-cuida-al]', (el) => { cuidaSel = el.dataset.cuidaAl; renderMascota(); }],
+    ['[data-cuida-cambiar]', () => { cuidaSel = ''; renderMascota(); }],
+    ['[data-cuida-go]', () => doCuidar()],
     ['[data-confirm]', () => doRedeem()],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],
