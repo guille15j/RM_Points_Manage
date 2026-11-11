@@ -41,6 +41,15 @@
     status: isDemo() ? 'demo' : 'off'
   };
   let busy = false;               // operacion en curso: pausa el refresco automatico
+  let loading = '';               // boton que esta esperando respuesta: 'confirm' | 'nombre' | 'estrella' | 'custom' | 'cuida'
+
+  // Boton de envio: mientras espera la respuesta queda desactivado y dice "Un momento..." (sin animacion: perfil alumno)
+  const SEND_BTN = {
+    loading: (o) => `<button type="button" disabled aria-busy="true" class="${o.cls}">${Icon('hourglass_top', o.sz || 'text-3xl')}<span>Un momento…</span></button>`,
+    idle: (o) => `<button type="button" ${o.attrs} ${o.off ? 'disabled' : ''} class="${o.cls}">${Icon(o.icon, o.sz || 'text-3xl', o.fill)}<span>${o.label}</span></button>`
+  };
+  const sendBtn = (o) => resolve(SEND_BTN, loading === o.key ? 'loading' : 'idle', 'idle')(o);
+  const noBtn = () => `<button type="button" data-close="dlg" ${loading ? 'disabled' : ''} class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>`;
   let pendingPrize = null;        // premio pendiente de confirmar
   let custom = null;              // editor de identidad: {alumnoId, avatar, color}
 
@@ -213,7 +222,7 @@
     elegido: (a, p) => `
       <p class="flex items-center gap-2 flex-wrap"><span class="text-ink-soft">Cuida:</span><strong>${esc(a.nombre)}</strong>
         <button type="button" data-cuida-cambiar class="pressable px-3 h-10 rounded-ui bg-surface text-ink-soft border border-line">Cambiar</button></p>
-      <button type="button" data-cuida-go ${a.puntos >= p.coste ? '' : 'disabled'} class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui bg-primary text-on-primary font-bold">${Icon(safeIcon(p.icono, 'favorite'), 'text-2xl')}${esc(p.nombre)} (${p.coste} puntos)</button>
+      ${sendBtn({ key: 'cuida', attrs: 'data-cuida-go', off: a.puntos < p.coste, cls: 'pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui bg-primary text-on-primary font-bold', sz: 'text-2xl', icon: safeIcon(p.icono, 'favorite'), label: `${esc(p.nombre)} (${p.coste} puntos)` })}
       ${a.puntos >= p.coste ? '' : `<p class="text-ink-soft text-center">A ${esc(a.nombre)} le faltan ${p.coste - a.puntos} puntos.</p>`}`,
     nadie: () => `
       <p class="text-ink-soft">¿Quién lo cuida?</p>
@@ -232,7 +241,7 @@
     const prev = S.sel;
     S.sel = a.id;
     pendingPrize = Object.assign({}, p, { efecto: 'mascota:' + p.accion });
-    await doRedeem();
+    await doRedeem('cuida');
     cuidaSel = '';
     S.sel = prev;
     render();
@@ -748,8 +757,8 @@
           <li class="flex items-center justify-between"><span class="text-ink-soft">Te quedarán</span>${Score({ value: a.puntos - p.coste, size: 'text-2xl' })}</li>
         </ul>
         <div class="grid grid-cols-2 gap-4 w-full pt-2">
-          <button type="button" data-close="dlg" class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>
-          <button type="button" data-confirm class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Sí, canjear</span></button>
+          ${noBtn()}
+          ${sendBtn({ key: 'confirm', attrs: 'data-confirm', cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'check', label: 'Sí, canjear' })}
         </div>
       </div>`;
   }
@@ -787,8 +796,8 @@
   // Botones del editor: normal (tras canjear) o vista previa (sin puntos: Guardar bloqueado)
   const CUSTOM_ACTIONS = {
     normal: ({ ready }) => `
-          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
-          <button type="button" data-custom-save ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Guardar</span></button>`,
+          <button type="button" data-custom-later ${loading ? 'disabled' : ''} class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
+          ${sendBtn({ key: 'custom', attrs: 'data-custom-save', off: !ready, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'check', label: 'Guardar' })}`,
     preview: ({ c }) => `
           <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>Cerrar</span></button>
           <button type="button" disabled aria-disabled="true" class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('lock', 'text-3xl')}<span>Te faltan ${c.falta}</span></button>`
@@ -889,8 +898,8 @@
         </div>
         <div class="grid grid-cols-2 gap-3">${opts}</div>
         <div class="grid grid-cols-2 gap-4 pt-2">
-          <button type="button" data-close="dlg" class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>
-          <button type="button" data-nombre-send ${nameSel ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Elegir</span></button>
+          ${noBtn()}
+          ${sendBtn({ key: 'nombre', attrs: 'data-nombre-send', off: !nameSel, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'check', label: 'Elegir' })}
         </div>
       </div>`;
   }
@@ -905,7 +914,8 @@
     const p = pendingPrize;
     if (!a || !p || !nameSel || busy) return;
     busy = true;
-    closeSheet('dlg');
+    loading = 'nombre';
+    paintLoading();
     const voto = nameSel;
     const nombre = a.nombre;
     try {
@@ -922,6 +932,8 @@
       render();
       toast('No se ha podido enviar tu voto. Avisa a tu profe y vuelve a probar.', 'err');
     } finally {
+      loading = '';
+      closeSheet('dlg');
       busy = false;
       pendingPrize = null;
       nameSel = '';
@@ -947,8 +959,8 @@
         <section><h3 class="mb-2 text-xl font-bold">1. ¿A quién?</h3><div class="grid grid-cols-2 gap-3">${mates}</div></section>
         <section><h3 class="mb-2 text-xl font-bold">2. ¿Por qué?</h3><div class="grid gap-3">${opts}</div></section>
         <div class="grid grid-cols-2 gap-4 pt-2">
-          <button type="button" data-close="dlg" class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>
-          <button type="button" data-est-send ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('star', 'text-3xl')}<span>Enviar</span></button>
+          ${noBtn()}
+          ${sendBtn({ key: 'estrella', attrs: 'data-est-send', off: !ready, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'star', label: 'Enviar' })}
         </div>
       </div>`;
   }
@@ -964,7 +976,8 @@
     if (!a || !p || busy || !estrellaSel.para || estrellaSel.frase < 0) return;
     const frase = opcionesDe(p)[estrellaSel.frase];
     busy = true;
-    closeSheet('dlg');
+    loading = 'estrella';
+    paintLoading();
     try {
       const res = await apiPost({ action: 'estrella', batchId: uid(), alumnoId: a.id, paraId: estrellaSel.para, frase });
       applyServer(res);
@@ -979,11 +992,21 @@
       render();
       toast('No se ha podido enviar. Avisa a tu profe y vuelve a probar.', 'err');
     } finally {
+      loading = '';
+      closeSheet('dlg');
       busy = false;
       pendingPrize = null;
       estrellaSel = { para: '', frase: -1 };
     }
   }
+  // Repinta el boton que acaba de pasar a "Un momento..." (o a su estado normal)
+  const paintLoading = () => {
+    const a = findAlumno(S.sel);
+    if (loading === 'confirm' && a && pendingPrize) $('#dlg-body').innerHTML = ConfirmBody({ a, p: pendingPrize });
+    else if (loading === 'nombre' || loading === 'estrella') redrawDlg();
+    else if (loading === 'custom') renderCustom();
+    else if (loading === 'cuida') renderMascota();
+  };
   const redrawDlg = () => {
     const a = findAlumno(S.sel);
     if (!a || !pendingPrize) return;
@@ -1000,12 +1023,13 @@
     ninguno: () => { S.sel = null; } // vuelve al paso 1
   };
 
-  async function doRedeem() {
+  async function doRedeem(key) {
     const a = findAlumno(S.sel);
     const p = pendingPrize;
-    closeSheet('dlg');
     if (!a || !p || busy) return;
     busy = true;
+    loading = key || 'confirm';
+    paintLoading();                     // el boton pasa a "Un momento..." hasta recibir respuesta
     const nombre = a.nombre;
     const alumnoId = a.id;
 
@@ -1031,6 +1055,8 @@
       render();
       toast('No se ha podido canjear. Avisa a tu profe y vuelve a probar.', 'err');
     } finally {
+      loading = '';
+      closeSheet('dlg');
       busy = false;
       pendingPrize = null;
     }
@@ -1063,6 +1089,8 @@
   async function saveCustom() {
     if (!custom || custom.preview || busy || !custom.avatar || !custom.color) return;
     busy = true;
+    loading = 'custom';
+    renderCustom();                             // Guardar pasa a "Un momento..." hasta recibir respuesta
     const c = custom;
     const a = findAlumno(c.alumnoId);
     const snapshot = clone(S.alumnos);
@@ -1074,6 +1102,7 @@
     render();
     try {
       const res = await apiPost({ action: 'perfil', batchId: uid(), alumnoId: c.alumnoId, avatar: c.avatar, color: c.color });
+      loading = '';
       applyServer(res);
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -1081,6 +1110,7 @@
       closeCustom();
       toast('Tu tarjeta ya es nueva.', 'ok');
     } catch (err) {
+      loading = '';
       console.error('Personalizacion fallida:', err);
       S.alumnos = snapshot;                     // ROLLBACK: el alumno conserva su personalizacion pendiente
       persist();
@@ -1089,6 +1119,7 @@
       renderCustom();                           // el editor sigue abierto para reintentar
       toast('No se ha podido guardar. Prueba otra vez.', 'err');
     } finally {
+      loading = '';
       busy = false;
     }
   }
@@ -1121,7 +1152,7 @@
     ['[data-cuida-al]', (el) => { cuidaSel = el.dataset.cuidaAl; renderMascota(); }],
     ['[data-cuida-cambiar]', () => { cuidaSel = ''; renderMascota(); }],
     ['[data-cuida-go]', () => doCuidar()],
-    ['[data-confirm]', () => doRedeem()],
+    ['[data-confirm]', () => doRedeem('confirm')],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],
     ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; redrawDlg(); }],
@@ -1144,6 +1175,7 @@
     ['#btn-refresh', () => refresh(true)]
   ];
   document.addEventListener('click', (e) => {
+    if (loading) return;                // esperando respuesta: ningun otro toque hace nada (evita dobles envios)
     for (const [selector, action] of CLICK_HANDLERS) {
       const el = e.target.closest(selector);
       if (el) return action(el);
