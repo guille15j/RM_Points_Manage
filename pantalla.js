@@ -290,7 +290,8 @@
   const bigBtn = (view, icon, label) => `<button type="button" data-mascota-view="${view}" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary text-lg font-bold">${Icon(icon, 'text-2xl')}<span>${label}</span></button>`;
   // Botones de la vista principal: Cuidar solo si hay una necesidad sin atender (nunca en el huevo); Diario si hay algo que contar
   const MASCOTA_ACTIONS = {
-    cuidar: (m) => bigBtn('cuidar', 'favorite', 'Cuidar'),
+    cuidar: (m) => `<button type="button" data-mascota-view="cuidar" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui bg-danger text-on-primary text-lg font-bold">${Icon('favorite', 'text-2xl', true)}<span>Cuidar</span></button>`,
+    cuidarNo: () => `<button type="button" disabled aria-disabled="true" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui bg-surface-alt text-ink-soft text-lg font-bold">${Icon('favorite', 'text-2xl')}<span>Cuidar</span></button>`,
     diario: (m) => bigBtn('diario', 'menu_book', 'Diario'),
     nada: () => ''
   };
@@ -303,15 +304,14 @@
         ${i > m.etapa ? MascotaUnknown('w-14 h-14') : MascotaImg(i, 'w-14 h-14')}
         <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${i > m.etapa ? '?' : esc(n)}</span>
       </li>`).join('');
-      const acciones = resolve(MASCOTA_ACTIONS, puedeCuidar(m) ? 'cuidar' : 'nada', 'nada')(m) + resolve(MASCOTA_ACTIONS, m.diario && m.diario.length ? 'diario' : 'nada', 'nada')(m);
+      const hayDiario = !!(m.diario && m.diario.length);
+      const acciones = resolve(MASCOTA_ACTIONS, puedeCuidar(m) ? 'cuidar' : 'cuidarNo', 'cuidarNo')(m) + resolve(MASCOTA_ACTIONS, m.diario && m.diario.length ? 'diario' : 'nada', 'nada')(m);
       return `${MASCOTA_HEAD(m, false)}
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
         <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa), mascotaAnim && mascotaAnim.accion)}</div></div>
-        <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
-        ${resolve(MASCOTA_NEED, !m.necesidad || m.etapa < 1 ? 'ninguna' : m.atendida ? 'atendida' : 'pendiente', 'ninguna')(m)}
-        ${acciones ? `<div class="grid gap-3 ${puedeCuidar(m) && m.diario && m.diario.length ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>` : ''}
+        <div class="grid gap-3 ${hayDiario ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
         ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         ${resolve(MASCOTA_VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m)}
