@@ -6,7 +6,8 @@
  *   { ok, alumnos:[{id,nombre,avatar,color,puntos,racha,insignias,pendientes}],
  *     reglas:[{id,nombre,puntos,icono,descripcion}], premios:[{id,nombre,coste,icono,descripcion,efecto}],
  *     insignias:[{id,nombre,icono,descripcion}], reto:{nombre,meta,progreso,premio,icono,logrado}|null,
- *     mascota:{nombre,puntos,etapa,etapas,desde,hasta,falta,premio,maxima}|null,
+ *     mascota:{nombre,puntos,etapa,etapas,desde,hasta,falta,premio,maxima,peligro,deuda,necesidad,atendida,votacion,diario}|null,
+ *     estrellas:[{id,para,paraNombre,de,deNombre,frase}] (pendientes de revisar), ayudante:{id,nombre}|null,
  *     config:{rachaHito,rachaBonus,ruletaBonus,avatares,colores}, ts }
  * apiPost() devuelve ademas { bonificaciones:[{alumnoId,racha,bonus}] }.
  *
@@ -49,7 +50,7 @@
   };
 
   /** Escoge y devuelve del estado solo lo que pinta la interfaz (para comparar y guardar). */
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'config'];
   const pickState = (r) => STATE_KEYS.reduce((o, k) => ((o[k] = r[k] === undefined ? null : r[k]), o), {});
 
   /* ---------- Red ---------- */
@@ -143,6 +144,11 @@
    *  { action:'batch',  batchId, movimientos:[{alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}] }
    *  { action:'canje',  batchId, alumnoId, premioId }
    *  { action:'perfil', batchId, alumnoId, avatar, color }
+ *  { action:'canje',  ..., opcion }                         (premio con efecto 'nombre')
+ *  { action:'estrella', batchId, alumnoId, paraId, frase }  (alumno propone)
+ *  { action:'estrella_resolver', batchId, estrellaId, ok }  (profesor)
+ *  { action:'rol', batchId, alumnoId, accion:'confirmar'|'saltar' }  (profesor)
+ *  { action:'mascota', batchId, accion:'reiniciar'|'cerrar_nombre' }  (profesor)
    * El batchId hace la operacion idempotente: reintentar no duplica movimientos.
    */
   async function apiPost(payload) {

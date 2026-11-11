@@ -22,6 +22,7 @@
     <div class="flex items-center gap-2 pl-4 pr-1 h-tap">
       <h1 class="flex-1 font-semibold">Puntos de clase</h1>
       <div id="status"></div>
+      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">pets</span><span id="clase-dot" class="hidden absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
       <button id="btn-refresh" type="button" aria-label="Actualizar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">sync</span></button>
     </div>
   </header>
@@ -120,6 +121,18 @@
         <button type="button" data-close="sheet-wheel" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
       </div>
       <div id="wheel-body" class="p-4"></div>
+    </div>
+  </div>
+
+  <!-- Hoja: clase (mascota, ayudante de turno, estrellas amables) -->
+  <div id="sheet-clase" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Mascota, ayudante y estrellas">
+    <div class="sheet-bg" data-close="sheet-clase"></div>
+    <div class="sheet-panel flex flex-col w-full max-h-[85dvh] bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Clase</h2>
+        <button type="button" data-close="sheet-clase" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div id="clase-body" class="flex-1 overflow-y-auto px-3 py-3 space-y-4"></div>
     </div>
   </div>
 

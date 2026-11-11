@@ -40,12 +40,28 @@
  *  - Reto de clase = puntos GANADOS (ajuste, ruleta, racha) desde reto_desde. No baja al canjear.
  *  - Personalizar: cada canje de un premio con efecto 'personalizar' da derecho a un cambio
  *    de avatar/color; cada movimiento 'perfil' consume uno.
+ *  - MASCOTA de clase: progreso = puntos ganados por todos (ajuste, ruleta, racha, rol, estrella)
+ *    MENOS las restas por conducta (ajustes y 'a cero' negativos). Los canjes (incluidas las acciones
+ *    de la mascota) NUNCA restan. Nunca baja de etapa: si una resta no cabe en la etapa actual se anota
+ *    como 'deuda' y la mascota queda en PELIGRO hasta que la clase la recupere o el profesor la reinicie
+ *    (movimiento 'mascota' con ref 'reset'). Se calcula recorriendo el ledger en orden.
+ *  - Necesidad de la mascota: cada clase (dia de dias_clase) pide UNA accion distinta (comer, acariciar,
+ *    banar, jugar), de forma fija segun la fecha. Se atiende canjeando el premio con efecto
+ *    'mascota:comer' (etc.). Solo se puede una vez por clase y solo la accion que toca.
+ *  - Nombre de la mascota: premio con efecto 'nombre' cuya descripcion lista los nombres separados por ';'.
+ *    Cada alumno canjea uno una sola vez. Cuando votan todos (o el profesor cierra) gana el mas votado
+ *    (empate: el que alcanzo antes sus votos).
+ *  - Estrella amable: premio con efecto 'estrella' (descripcion = frases separadas por ';'). El alumno
+ *    propone una a un companero (1 al dia); el profesor la aprueba (suma estrella_puntos) o rechaza.
+ *  - Ayudante de turno: rota por orden de la hoja Alumnos; el profesor confirma (suma ayudante_puntos)
+ *    o salta al siguiente si falta.
  */
 const Engine = (function () {
   'use strict';
 
   const TIPOS_RACHA = ['ajuste', 'ruleta'];
-  const TIPOS_GANADOS = ['ajuste', 'ruleta', 'racha'];
+  const TIPOS_GANADOS = ['ajuste', 'ruleta', 'racha', 'rol', 'estrella_res'];
+  const ACCIONES_MASCOTA = ['comer', 'acariciar', 'banar', 'jugar'];
   const COLORES = ['base', 'azul', 'verde', 'turquesa', 'amarillo', 'naranja', 'rosa', 'violeta', 'arena'];
   const AVATARES = [
     'pets', 'rocket_launch', 'sailing', 'park', 'sports_soccer', 'music_note', 'palette', 'bolt',
@@ -76,6 +92,8 @@ const Engine = (function () {
     mascota_desde: '',
     mascota_etapas: '0,100,300,600,1000',
     mascota_premio: '',
+    estrella_puntos: 2,
+    ayudante_puntos: 2,
     ruleta_bonus: '5,10,20',
     avatares: AVATARES.join(','),
     colores: COLORES.join(',')
@@ -147,6 +165,8 @@ const Engine = (function () {
       mascotaDesde: g('mascota_desde'),
       mascotaEtapas: etapasMascota(g('mascota_etapas')),
       mascotaPremio: str(g('mascota_premio')),
+      estrellaPuntos: Math.max(0, int(g('estrella_puntos'), 2)),
+      ayudantePuntos: Math.max(0, int(g('ayudante_puntos'), 2)),
       ruletaBonus: bonus.length ? bonus : [5, 10, 20],
       avatares: avatares.length ? avatares : AVATARES.slice(),
       colores: colores.length ? colores : COLORES.slice()
@@ -258,6 +278,136 @@ const Engine = (function () {
     return out;
   }
 
+
+  /* ---------- Mascota, votaciones y roles ---------- */
+  const splitOpciones = (v) => str(v).split(/[;|]/).map((s) => s.trim()).filter(Boolean);
+  const efectoDe = (items) => {
+    const m = {};
+    items.forEach((i) => { if (i.tipo === 'premio') m[str(i.id)] = str(i.efecto); });
+    return m;
+  };
+  const accionDe = (efecto) => {
+    const m = str(efecto).match(/^mascota:([a-z]+)$/);
+    return m && ACCIONES_MASCOTA.indexOf(m[1]) >= 0 ? m[1] : '';
+  };
+  /** Dia de clase mas reciente (hoy incluido). */
+  function ultimaClase(hoy, diasClase) {
+    const n = dayNum(hoy);
+    for (let i = 0; i < 7; i++) {
+      const key = new Date((n - i) * 86400000).toISOString().slice(0, 10);
+      if (diasClase.indexOf(isoDow(key)) >= 0) return key;
+    }
+    return hoy;
+  }
+  /** Numero de orden de una clase: sirve para rotar la necesidad de la mascota. */
+  function ordenClase(day, diasClase) {
+    const dow = isoDow(day);
+    const sorted = diasClase.slice().sort((a, b) => a - b);
+    const semana = Math.floor((dayNum(day) - (dow - 1) - 4) / 7); // el lunes 1970-01-05 es el dia 4
+    return semana * sorted.length + Math.max(0, sorted.indexOf(dow));
+  }
+  /** Que pide la mascota en la clase actual y si ya esta atendida. */
+  function necesidadMascota(led, items, ctx, c) {
+    const hoy = ctx.fmtDay(ctx.now);
+    const clase = ultimaClase(hoy, c.diasClase);
+    const accion = ACCIONES_MASCOTA[((ordenClase(clase, c.diasClase) % 4) + 4) % 4];
+    const ef = efectoDe(items);
+    const atendida = led.some((m) => m.tipo === 'canje' && accionDe(ef[str(m.ref)]) && toDay(m.fecha, ctx) >= clase);
+    return { accion, atendida, clase };
+  }
+  /** Votos del nombre de la mascota (primer voto de cada alumno) y estado de la votacion. */
+  function votacionNombre(led, items, alumnosAct, c) {
+    const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.efecto) === 'nombre')[0];
+    if (!premio) return { estado: 'ninguna', premioId: '', opciones: [], votos: {}, votantes: 0, total: alumnosAct.length, porAlumno: {}, ganador: '', fecha: null };
+    const opciones = splitOpciones(premio.descripcion);
+    const activos = {};
+    alumnosAct.forEach((a) => (activos[str(a.id)] = true));
+    const porAlumno = {};
+    const orden = [];
+    let fecha = null;
+    led.forEach((m) => {
+      if (m.tipo === 'canje' && str(m.ref) === str(premio.id) && activos[str(m.alumnoId)] && !porAlumno[str(m.alumnoId)] && opciones.indexOf(str(m.nota)) >= 0) {
+        porAlumno[str(m.alumnoId)] = str(m.nota);
+        orden.push(str(m.nota));
+        fecha = m.fecha;
+      }
+    });
+    const votos = {};
+    const alcanzo = {};
+    opciones.forEach((o) => (votos[o] = 0));
+    orden.forEach((o, idx) => { votos[o]++; alcanzo[o] = idx; });
+    const cierre = led.filter((m) => m.tipo === 'mascota' && str(m.ref) === 'cerrar-nombre')[0];
+    if (cierre) fecha = cierre.fecha;
+    const votantes = orden.length;
+    const cerrada = !!cierre || (alumnosAct.length > 0 && votantes >= alumnosAct.length);
+    const ranking = opciones.filter((o) => votos[o] > 0).sort((x, y) => votos[y] - votos[x] || alcanzo[x] - alcanzo[y]);
+    return {
+      estado: cerrada ? 'cerrada' : 'abierta', premioId: str(premio.id), opciones, votos, votantes, total: alumnosAct.length,
+      porAlumno, ganador: cerrada && ranking.length ? ranking[0] : '', fecha
+    };
+  }
+  /** Estrellas amables pendientes de que el profesor las revise. */
+  function estrellasPendientes(led) {
+    const resueltas = {};
+    led.forEach((m) => { if (m.tipo === 'estrella_res') resueltas[str(m.ref)] = true; });
+    return led.filter((m) => m.tipo === 'estrella' && !resueltas[str(m.id)]);
+  }
+  /** Ayudante de turno: el siguiente en la lista despues del ultimo que tuvo el rol (confirmado o saltado). */
+  function ayudanteDe(led, alumnosAct) {
+    if (!alumnosAct.length) return null;
+    let ult = null;
+    led.forEach((m) => { if (m.tipo === 'rol') ult = str(m.alumnoId); });
+    const idx = alumnosAct.findIndex((a) => str(a.id) === ult);
+    return alumnosAct[(idx + 1) % alumnosAct.length];
+  }
+  /**
+   * Mascota: recorre el ledger EN ORDEN. Nunca baja de etapa; lo que no cabe se acumula como deuda (peligro).
+   * Devuelve {progreso, etapa, deuda, diario[]}. Los canjes nunca restan.
+   */
+  function progresoMascota(led, items, ctx, c, idsAct) {
+    const th = c.mascotaEtapas;
+    const desde = c.mascotaDesde ? toDay(c.mascotaDesde, ctx) : '';
+    const ef = efectoDe(items);
+    let p = 0, piso = 0, etapa = 0, deuda = 0;
+    const diario = [];
+    led.forEach((m) => {
+      const dia = toDay(m.fecha, ctx);
+      if (desde && dia && dia < desde) return;
+      if (m.tipo === 'mascota') {
+        if (str(m.ref) === 'reset') { p = 0; piso = 0; etapa = 0; deuda = 0; diario.push({ dia, tipo: 'reinicio' }); }
+        return;
+      }
+      if (m.tipo === 'canje') {
+        const a = accionDe(ef[str(m.ref)]);
+        if (a && idsAct[str(m.alumnoId)]) diario.push({ dia, tipo: 'accion', accion: a, alumnoId: str(m.alumnoId) });
+        return;
+      }
+      if (!idsAct[str(m.alumnoId)]) return;
+      const d = Number(m.delta) || 0;
+      if (d > 0 && TIPOS_GANADOS.indexOf(m.tipo) >= 0) {
+        let gana = d;
+        if (deuda > 0) {
+          const paga = Math.min(deuda, gana);
+          deuda -= paga;
+          gana -= paga;
+          if (deuda === 0) diario.push({ dia, tipo: 'recuperada' });
+        }
+        p += gana;
+      } else if (d < 0) {
+        const nuevo = p + d;
+        if (nuevo < piso) {
+          if (deuda === 0) diario.push({ dia, tipo: 'peligro' });
+          deuda += piso - nuevo;
+          p = piso;
+        } else {
+          p = nuevo;
+        }
+      }
+      th.forEach((u, i) => { if (p >= u && i > etapa) { etapa = i; piso = th[i]; diario.push({ dia, tipo: 'crecio', etapa: i }); } });
+    });
+    return { progreso: p, etapa, deuda, diario };
+  }
+
   /* ---------- Estado que ve el frontend (respuesta de GET) ---------- */
   function computeState(t, ctx) {
     const c = readConfig(t.config);
@@ -274,6 +424,9 @@ const Engine = (function () {
     const pend = pendientesMap(items, led);
     const it = insigniaTables(led, ctx, c.insigniaDias);
     const unlocks = unlockMap(items);
+    const vot = votacionNombre(led, items, alumnosAct, c);
+    const estHoy = {};
+    led.forEach((m) => { if (m.tipo === 'estrella' && toDay(m.fecha, ctx) === hoy) estHoy[str(m.ref)] = true; });
 
     const alumnos = alumnosAct.map((a) => {
       const id = str(a.id);
@@ -287,7 +440,9 @@ const Engine = (function () {
         insignias: Object.keys(it.activas[id] || {}).sort((x, y) => it.activas[id][y] - it.activas[id][x]),
         insigniasRestan: it.activas[id] || {},
         cosmeticos: cosmeticosDe(it.ever[id], unlocks),
-        pendientes: pend[id] || 0
+        pendientes: pend[id] || 0,
+        votoNombre: vot.porAlumno[id] || '',
+        estrellaHoy: !!estHoy[id]
       };
     });
 
@@ -309,19 +464,31 @@ const Engine = (function () {
       ? { nombre: c.retoNombre, meta: c.retoMeta, progreso, premio: c.retoPremio, icono: c.retoIcono, logrado: progreso >= c.retoMeta }
       : null;
 
-    // Mascota de clase: crece con los puntos ganados por todos; nunca retrocede al restar o canjear
+    // Mascota de clase (ver cabecera: restas, peligro, necesidad, nombre y diario)
     let mascota = null;
     if (c.mascotaActiva) {
-      const pm = ganadosDesde(c.mascotaDesde);
+      const pm = progresoMascota(led, items, ctx, c, idsAct);
       const th = c.mascotaEtapas;
-      let etapa = 0;
-      th.forEach((u, i) => { if (pm >= u) etapa = i; });
+      const etapa = pm.etapa;
       const maxima = etapa >= th.length - 1;
+      const nec = necesidadMascota(led, items, ctx, c);
+      const diario = pm.diario.slice(-8).reverse();
+      if (vot.estado === 'cerrada' && vot.ganador) diario.unshift({ dia: toDay(vot.fecha, ctx), tipo: 'nombre', nombre: vot.ganador });
       mascota = {
-        nombre: c.mascotaNombre, puntos: pm, etapa, etapas: th.length, premio: c.mascotaPremio,
-        desde: th[etapa], hasta: maxima ? null : th[etapa + 1], falta: maxima ? 0 : th[etapa + 1] - pm, maxima
+        nombre: vot.ganador || c.mascotaNombre, puntos: pm.progreso, etapa, etapas: th.length, premio: c.mascotaPremio,
+        desde: th[etapa], hasta: maxima ? null : th[etapa + 1], falta: maxima ? 0 : th[etapa + 1] - pm.progreso, maxima,
+        peligro: pm.deuda > 0, deuda: pm.deuda,
+        necesidad: nec.accion, atendida: nec.atendida,
+        votacion: { estado: vot.estado, opciones: vot.opciones, votos: vot.votos, votantes: vot.votantes, total: vot.total },
+        diario
       };
     }
+    const estrellas = estrellasPendientes(led).map((m) => {
+      const para = alumnosAct.find((a) => str(a.id) === str(m.alumnoId));
+      const de = alumnosAct.find((a) => str(a.id) === str(m.ref));
+      return { id: str(m.id), para: str(m.alumnoId), paraNombre: para ? str(para.nombre) : '', de: str(m.ref), deNombre: de ? str(de.nombre) : '', frase: str(m.nota) };
+    }).filter((e) => e.paraNombre);
+    const ay = ayudanteDe(led, alumnosAct);
 
     // Cosmeticos que se pueden conseguir (para mostrarlos bloqueados en el editor)
     const cosmeticos = [];
@@ -341,9 +508,11 @@ const Engine = (function () {
       insignias: activeItems.filter((i) => i.tipo === 'insignia').map((i) => Object.assign(view(i), { desbloquea: unlocks[str(i.id)] || [] })),
       reto,
       mascota,
+      estrellas,
+      ayudante: ay ? { id: str(ay.id), nombre: str(ay.nombre) } : null,
       config: {
         rachaHito: c.rachaHito, rachaBonus: c.rachaBonus, ruletaBonus: c.ruletaBonus, avatares: c.avatares, colores: c.colores,
-        diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos
+        diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos
       },
       ts: ctx.now.toISOString()
     };
@@ -420,7 +589,57 @@ const Engine = (function () {
       if (!premio) throw new Error('Premio no válido');
       const coste = Number(premio.puntos) || 0;
       if ((bal[id] || 0) < coste) throw new Error('Saldo insuficiente');
-      add(id, 'canje', -coste, str(premio.nombre), 'tpv', str(premio.id));
+      const efecto = str(premio.efecto);
+      let nota = str(premio.nombre);
+      if (accionDe(efecto)) {
+        if (!c.mascotaActiva) throw new Error('La mascota no está activa');
+        const nec = necesidadMascota(led, items, ctx, c);
+        if (nec.atendida) throw new Error('La mascota ya está atendida en esta clase');
+        if (nec.accion !== accionDe(efecto)) throw new Error('La mascota no necesita esto ahora');
+      } else if (efecto === 'nombre') {
+        const vot = votacionNombre(led, items, (t.alumnos || []).filter(isActivo), c);
+        const opcion = str(p.opcion).trim();
+        if (vot.estado !== 'abierta') throw new Error('La votación ya ha terminado');
+        if (vot.porAlumno[id]) throw new Error('Ya has elegido un nombre');
+        if (vot.opciones.indexOf(opcion) < 0) throw new Error('Nombre no válido');
+        nota = opcion;
+      } else if (efecto === 'estrella') {
+        throw new Error('La estrella amable se envía desde su propia pantalla');
+      }
+      add(id, 'canje', -coste, nota, 'tpv', str(premio.id));
+    } else if (p.action === 'estrella') {
+      const id = alumnoValido(p.alumnoId);
+      const para = alumnoValido(p.paraId);
+      if (para === id) throw new Error('Elige a un compañero');
+      const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.efecto) === 'estrella')[0];
+      if (!premio) throw new Error('La estrella amable no está disponible');
+      const frase = str(p.frase).trim();
+      if (splitOpciones(premio.descripcion).indexOf(frase) < 0) throw new Error('Frase no válida');
+      if (led.some((m) => m.tipo === 'estrella' && str(m.ref) === id && toDay(m.fecha, ctx) === hoy)) throw new Error('Hoy ya has enviado tu estrella');
+      add(para, 'estrella', 0, frase, 'tpv', id);
+    } else if (p.action === 'estrella_resolver') {
+      const pend = estrellasPendientes(led).filter((m) => str(m.id) === str(p.estrellaId))[0];
+      if (!pend) throw new Error('Esa estrella ya está resuelta');
+      const ok = p.ok === true;
+      add(str(pend.alumnoId), 'estrella_res', ok ? c.estrellaPuntos : 0, ok ? str(pend.nota) : 'Rechazada', 'profesor', str(pend.id));
+    } else if (p.action === 'rol') {
+      const act = (t.alumnos || []).filter(isActivo);
+      const ay = ayudanteDe(led, act);
+      if (!ay) throw new Error('No hay alumnos');
+      if (str(p.alumnoId) !== str(ay.id)) throw new Error('El ayudante ha cambiado: actualiza la pantalla');
+      const confirmar = p.accion === 'confirmar';
+      if (!confirmar && p.accion !== 'saltar') throw new Error('Acción de rol no válida');
+      add(str(ay.id), 'rol', confirmar ? c.ayudantePuntos : 0, 'Ayudante de turno', 'profesor', confirmar ? 'confirmado' : 'saltado');
+    } else if (p.action === 'mascota') {
+      if (p.accion === 'reiniciar') {
+        add('', 'mascota', 0, 'Reinicio de la mascota', 'profesor', 'reset');
+      } else if (p.accion === 'cerrar_nombre') {
+        const vot = votacionNombre(led, items, (t.alumnos || []).filter(isActivo), c);
+        if (vot.estado !== 'abierta') throw new Error('No hay una votación abierta');
+        add('', 'mascota', 0, 'Cierre de la votación', 'profesor', 'cerrar-nombre');
+      } else {
+        throw new Error('Acción de mascota no válida');
+      }
     } else if (p.action === 'perfil') {
       const id = alumnoValido(p.alumnoId);
       const avatar = str(p.avatar);

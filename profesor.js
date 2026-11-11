@@ -34,6 +34,9 @@
     reglas: saved.reglas || [],     // motivos frecuentes (pestana ReglasYPremios)
     insignias: saved.insignias || [],
     config: saved.config || { ruletaBonus: [] },
+    mascota: saved.mascota || null,
+    estrellas: saved.estrellas || [],
+    ayudante: saved.ayudante || null,
     uso: saved.uso || {},           // veces que se ha usado cada motivo (ordena los favoritos del dock)
     uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
     cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
@@ -49,8 +52,11 @@
   let mtab = 'suma';                // pestana de la hoja de motivos
 
   const $ = (s) => document.querySelector(s);
-  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, uso: S.uso, cart: S.cart, pending: S.pending });
-  const applyServer = (res) => { ['alumnos', 'reglas', 'insignias', 'config'].forEach((k) => { if (res[k]) S[k] = res[k]; }); };
+  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, mascota: S.mascota, estrellas: S.estrellas, ayudante: S.ayudante, uso: S.uso, cart: S.cart, pending: S.pending });
+  const applyServer = (res) => {
+    ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
+    ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
+  };
   const findInsignia = (id) => S.insignias.find((i) => i.id === id);
   const randInt = (n) => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
@@ -380,7 +386,123 @@
     renderMotives();
     renderCartCount();
     renderBanner();
+    renderClaseDot();
     if ($('#sheet-cart').classList.contains('open')) renderCart();
+    if ($('#sheet-clase').classList.contains('open')) renderClase();
+  }
+
+  /* ======================= CLASE: mascota, ayudante de turno, estrellas ======================= */
+  let claseBusy = false;             // una operacion de esta hoja en curso
+  let pendClase = null;              // {id,sig}: batchId del ultimo intento (reintento idempotente)
+  let confirmReset = false;          // "Reiniciar" pide una segunda pulsacion
+
+  // Punto rojo en el boton: hay algo que revisar (estrellas) o la mascota esta en peligro
+  const CLASE_DOT = { si: () => $('#clase-dot').classList.remove('hidden'), no: () => $('#clase-dot').classList.add('hidden') };
+  const hayAviso = () => (S.estrellas || []).length > 0 || !!(S.mascota && S.mascota.peligro);
+  const renderClaseDot = () => resolve(CLASE_DOT, hayAviso() ? 'si' : 'no', 'no')();
+
+  const AYUDANTE = {
+    si: (ay, pts) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('volunteer_activism', 'text-xl')}Ayudante de turno</h3>
+        <p class="text-lg"><strong>${esc(ay.nombre)}</strong></p>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" data-rol="saltar" data-al="" ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('skip_next', 'text-xl')}No está: siguiente</button>
+          <button type="button" data-rol="confirmar" ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 h-tap rounded-ui bg-primary text-on-primary font-semibold">${Icon('check', 'text-xl')}Hecho +${pts}</button>
+        </div>
+      </section>`,
+    no: () => ''
+  };
+  const ESTRELLAS = {
+    lleno: (list, pts) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('star', 'text-xl')}Estrellas amables (${list.length})</h3>
+        <ul class="space-y-2">${list.map((e) => `
+          <li class="p-3 rounded-ui border border-line space-y-2">
+            <p><strong>${esc(e.deNombre)}</strong> a <strong>${esc(e.paraNombre)}</strong></p>
+            <p class="text-ink-soft">${esc(e.frase)}</p>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" data-est-no="${esc(e.id)}" ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
+              <button type="button" data-est-ok="${esc(e.id)}" ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
+            </div>
+          </li>`).join('')}</ul>
+      </section>`,
+    vacio: () => `<section class="space-y-1"><h3 class="flex items-center gap-2 font-semibold">${Icon('star', 'text-xl')}Estrellas amables</h3><p class="text-ink-soft">Nada pendiente de revisar.</p></section>`
+  };
+  const RESET_BTN = {
+    pide: () => `
+      <div class="space-y-2">
+        <p class="text-ink-soft">La mascota vuelve a ser un huevo y el progreso empieza de cero. El diario se conserva.</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" data-reset-cancel class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Cancelar</button>
+          <button type="button" data-reset-ok ${claseBusy ? 'disabled' : ''} class="pressable h-tap rounded-ui bg-danger text-on-primary font-semibold">Sí, reiniciar</button>
+        </div>
+      </div>`,
+    normal: () => `<button type="button" data-reset-ask class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-danger font-semibold">${Icon('restart_alt', 'text-xl')}Reiniciar desde el huevo</button>`
+  };
+  const PELIGRO = {
+    si: (m) => `<p class="p-3 rounded-ui bg-danger/10 text-danger font-semibold">${esc(m.nombre)} está en peligro: las restas superan lo que ha ganado (${m.deuda}). La clase puede recuperarla sumando, o puedes reiniciarla.</p>`,
+    no: () => ''
+  };
+  const VOTACION = {
+    abierta: (v) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('how_to_vote', 'text-xl')}Nombre de la mascota</h3>
+        <p class="text-ink-soft">Han votado ${v.votantes} de ${v.total}.</p>
+        <ul class="text-sm space-y-0.5">${Object.keys(v.votos).map((o) => `<li class="flex justify-between"><span>${esc(o)}</span><span class="tabular-nums font-semibold">${v.votos[o]}</span></li>`).join('')}</ul>
+        <button type="button" data-cerrar-nombre ${claseBusy ? 'disabled' : ''} class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('lock', 'text-xl')}Cerrar votación</button>
+      </section>`,
+    otro: () => ''
+  };
+  const MASCOTA_SECTION = {
+    si: (m) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('pets', 'text-xl')}${esc(m.nombre)}</h3>
+        <p class="text-ink-soft">Etapa ${m.etapa + 1} de ${m.etapas} · ${m.puntos} puntos${m.maxima ? ' · máxima' : ''}</p>
+        ${resolve(PELIGRO, m.peligro ? 'si' : 'no', 'no')(m)}
+        ${resolve(RESET_BTN, confirmReset ? 'pide' : 'normal', 'normal')()}
+      </section>
+      ${resolve(VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m.votacion)}`,
+    no: () => `<p class="text-ink-soft">La mascota está desactivada (mascota_activa en Config).</p>`
+  };
+  function renderClase() {
+    const pts = (S.config && S.config.ayudantePuntos) || 2;
+    const ept = (S.config && S.config.estrellaPuntos) || 2;
+    $('#clase-body').innerHTML =
+      resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
+      resolve(ESTRELLAS, (S.estrellas || []).length ? 'lleno' : 'vacio', 'vacio')(S.estrellas || [], ept) +
+      resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota);
+  }
+  function openClase() {
+    confirmReset = false;
+    renderClase();
+    openSheet('sheet-clase');
+  }
+  /** Envia una accion de esta hoja. Mismo batchId si se reintenta el mismo envio (nunca duplica). */
+  async function claseAction(payload, okMsg) {
+    if (claseBusy) return;
+    claseBusy = true;
+    renderClase();
+    const sig = JSON.stringify(payload);
+    const batchId = pendClase && pendClase.sig === sig ? pendClase.id : uid();
+    pendClase = { id: batchId, sig };
+    try {
+      const res = await apiPost(Object.assign({ batchId }, payload));
+      applyServer(res);
+      pendClase = null;
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      toast(okMsg, 'ok');
+    } catch (err) {
+      console.error('Accion de clase fallida:', err);
+      setStatus('off');
+      toast(`No se pudo enviar (${err.message}). Vuelve a pulsar.`, 'err');
+    } finally {
+      claseBusy = false;
+      confirmReset = false;
+      render();
+      renderClase();
+    }
   }
 
   /* ======================= 5. ACCIONES ======================= */
@@ -635,6 +757,14 @@
   /* ======================= 8. EVENTOS ======================= */
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
+    ['[data-rol]', (el) => claseAction({ action: 'rol', accion: el.dataset.rol, alumnoId: S.ayudante && S.ayudante.id }, el.dataset.rol === 'confirmar' ? 'Ayudante confirmado' : 'Siguiente ayudante')],
+    ['[data-est-ok]', (el) => claseAction({ action: 'estrella_resolver', estrellaId: el.dataset.estOk, ok: true }, 'Estrella aprobada')],
+    ['[data-est-no]', (el) => claseAction({ action: 'estrella_resolver', estrellaId: el.dataset.estNo, ok: false }, 'Estrella rechazada')],
+    ['[data-cerrar-nombre]', () => claseAction({ action: 'mascota', accion: 'cerrar_nombre' }, 'Votación cerrada')],
+    ['[data-reset-ask]', () => { confirmReset = true; renderClase(); }],
+    ['[data-reset-cancel]', () => { confirmReset = false; renderClase(); }],
+    ['[data-reset-ok]', () => claseAction({ action: 'mascota', accion: 'reiniciar' }, 'Mascota reiniciada')],
+    ['#btn-clase', () => openClase()],
     ['[data-del]', (el) => deleteMov(el.dataset.del)],
     ['[data-edit]', (el) => openEdit(el.dataset.edit)],
     ['[data-remove]', () => deleteMov(edit.id)],

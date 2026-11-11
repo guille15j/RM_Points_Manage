@@ -17,13 +17,13 @@
 (function () {
   'use strict';
   const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, pickState } = window.TP;
-  const { resolve, safeIcon, Icon, Avatar, avatarFace, colorStyle, cosmeticLabel, renderStreak, renderBadges, renderNote, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
+  const { resolve, safeIcon, Icon, Avatar, avatarFace, colorStyle, cosmeticLabel, renderStreakProgress, renderBadges, renderNote, btnClass, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
   const UI_ICON = (name) => safeIcon(name, 'redeem'); // icono de premio (si el dato no es valido, usa 'redeem')
 
   /* ======================= 1. ESTADO ======================= */
   const KEY = 'tp_pant_v3';
   const saved = store.get(KEY, {});
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'config'];
   const S = {
     alumnos: saved.alumnos || [],
     reglas: saved.reglas || [],
@@ -31,6 +31,8 @@
     insignias: saved.insignias || [],
     reto: saved.reto || null,
     mascota: saved.mascota || null,
+    estrellas: saved.estrellas || [],     // solo las usa el panel del profesor
+    ayudante: saved.ayudante || null,
     config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [], cosmeticos: [], insigniaDias: 7 },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
@@ -43,7 +45,7 @@
 
   const $ = (s) => document.querySelector(s);
   const persist = () => store.set(KEY, Object.assign(pickState(S), { tab: S.tab, view: S.view }));
-  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota')) S[k] = res[k]; });
+  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota' || k === 'ayudante')) S[k] = res[k]; });
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findPremio = (id) => S.premios.find((p) => p.id === id);
@@ -56,6 +58,7 @@
     return `<span class="inline-flex items-center gap-2 font-bold tabular-nums ${size || 'text-3xl'}">${Icon('star', 'text-[0.85em] text-primary', true)}<span>${value}</span></span>`;
   }
   const StudentAvatar = (a, size) => Avatar({ icono: a.avatar, color: a.color, size });
+  const StreakChip = (a) => renderStreakProgress(a, S.config.rachaHito);
   const Badges = (a, max) => renderBadges({ ids: a.insignias || [], catalog: S.insignias, max, restan: a.insigniasRestan });
 
   /* ---- Reto de clase (barra comun) ---- */
@@ -91,14 +94,42 @@
   // Imagenes: mascota/etapa-1 ... etapa-5 en .gif (animado), .png o .svg. Se prueba en ese orden
   // y se recuerda cual existe, asi cada etapa puede estar en el formato que se quiera.
   const MASCOTA_EXT = ['gif', 'png', 'svg'];
-  const extUsada = {};                                // etapa -> posicion en MASCOTA_EXT
+  const extUsada = {};                                // etapa -> posicion en MASCOTA_EXT ('u' = unknown)
+  const MASCOTA_ANIM_MS = 3500;                       // duracion de la animacion de una accion
   const etapaN = (etapa) => Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa)) + 1;
   const mascotaImg = (etapa) => `mascota/etapa-${etapaN(etapa)}.${MASCOTA_EXT[extUsada[etapaN(etapa)] || 0]}`;
-  /** <img> de la mascota (pixel art nitido). Si falta el archivo, el listener de abajo prueba el siguiente formato. */
-  const MascotaImg = (etapa, cls, alt) => `<img src="${mascotaImg(etapa)}" data-mascota="${etapaN(etapa)}" alt="${esc(alt || '')}" class="mascota-px object-contain ${cls}" draggable="false">`;
+  let mascotaAnim = null;                             // {accion, token}: animacion de accion en curso
+  /**
+   * <img> de la mascota (pixel art nitido). Si falta el archivo, el listener de abajo prueba el siguiente formato.
+   * Con accion: mascota/etapa-N-<accion>.gif (se reinicia con ?v=); si no existe, vuelve a la imagen base.
+   */
+  const MascotaImg = (etapa, cls, alt, accion) => {
+    const n = etapaN(etapa);
+    const src = accion ? `mascota/etapa-${n}-${accion}.gif?v=${mascotaAnim ? mascotaAnim.token : 0}` : mascotaImg(etapa);
+    return `<img src="${src}" data-mascota="${n}"${accion ? ` data-accion="${accion}"` : ''} alt="${esc(alt || '')}" class="mascota-px object-contain ${cls}" draggable="false">`;
+  };
+  /** Etapas aun no alcanzadas: mascota/unknown.gif|png|svg. Si no hay ninguno, un signo de interrogacion. */
+  const MascotaUnknown = (cls) => `<img src="mascota/unknown.${MASCOTA_EXT[extUsada.u || 0]}" data-unknown="1" data-cls="${cls}" alt="Todavía es un misterio" class="mascota-px object-contain ${cls}" draggable="false">`;
   document.addEventListener('error', (e) => {
     const img = e.target;
-    if (!img || !img.dataset || !img.dataset.mascota) return;
+    if (!img || !img.dataset) return;
+    if (img.dataset.accion) {                         // animacion sin archivo: se queda la imagen base
+      const n = Number(img.dataset.mascota);
+      img.removeAttribute('data-accion');
+      img.src = `mascota/etapa-${n}.${MASCOTA_EXT[extUsada[n] || 0]}`;
+      return;
+    }
+    if (img.dataset.unknown) {
+      const next = (extUsada.u || 0) + 1;
+      if (next >= MASCOTA_EXT.length) {
+        img.outerHTML = `<span class="flex items-center justify-center ${img.dataset.cls} text-ink-soft">${Icon('help', 'text-5xl')}</span>`;
+        return;
+      }
+      extUsada.u = next;
+      img.src = `mascota/unknown.${MASCOTA_EXT[next]}`;
+      return;
+    }
+    if (!img.dataset.mascota) return;
     const n = Number(img.dataset.mascota);
     const next = (extUsada[n] || 0) + 1;
     if (next >= MASCOTA_EXT.length) return;           // ningun formato: se queda sin imagen
@@ -117,6 +148,11 @@
   }
 
   const FAB_STATES = {
+    peligro: (m) => `
+      <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: está en peligro" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-attention shadow-lg">
+        ${MascotaImg(m.etapa, 'w-16 h-16')}
+        <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-attention text-on-primary">${Icon('warning', 'text-xl', true)}</span>
+      </button>`,
     nuevo: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
         ${MascotaImg(m.etapa, 'w-16 h-16')}
@@ -128,7 +164,7 @@
       </button>`,
     ninguno: () => ''
   };
-  const getFabKind = (m) => (!m ? 'ninguno' : m.etapa > seenEtapa() ? 'nuevo' : 'normal');
+  const getFabKind = (m) => (!m ? 'ninguno' : m.peligro ? 'peligro' : m.etapa > seenEtapa() ? 'nuevo' : 'normal');
   function renderMascotaFab() {
     const m = S.mascota;
     $('#fab-mascota').innerHTML = m ? `<div class="fab-mascota">${resolve(FAB_STATES, getFabKind(m), 'ninguno')(m)}</div>` : '';
@@ -136,6 +172,11 @@
 
   const MASCOTA_GROW = {
     si: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-primary-soft text-primary text-xl font-bold">${Icon('auto_awesome', 'text-2xl', true)}<span>${esc(m.nombre)} ha crecido</span></p>`,
+    no: () => ''
+  };
+  // Peligro: la mascota nunca retrocede; el profe decide si se reinicia. Tono tranquilo, sin dramatizar.
+  const MASCOTA_ALERT = {
+    si: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('warning', 'text-2xl', true)}<span>${esc(m.nombre)} está en peligro. Tu profe decidirá qué hacer.</span></p>`,
     no: () => ''
   };
   const MASCOTA_PROGRESS = {
@@ -155,11 +196,70 @@
     si: (m) => `<p class="text-center text-ink-soft">${m.maxima ? 'Lo hemos conseguido' : 'Entre todos conseguimos'}: <strong class="text-ink">${esc(m.premio)}</strong></p>`,
     no: () => ''
   };
+
+  /* ---- Necesidad de la mascota: una sola cada clase ---- */
+  const ACCION_INFO = {
+    comer: { icon: 'restaurant', pide: 'tiene hambre', verbo: (n, m) => `${n} dio de comer a ${m}` },
+    acariciar: { icon: 'favorite', pide: 'quiere mimos', verbo: (n, m) => `${n} acarició a ${m}` },
+    banar: { icon: 'bathtub', pide: 'necesita un baño', verbo: (n, m) => `${n} bañó a ${m}` },
+    jugar: { icon: 'sports_esports', pide: 'quiere jugar', verbo: (n, m) => `${n} jugó con ${m}` }
+  };
+  const premioDeAccion = (accion) => S.premios.find((p) => p.efecto === 'mascota:' + accion);
+  const NEED_CTA = {
+    si: (p) => `<p class="text-ink-soft">Lo encuentras en <strong class="text-ink">Canjear</strong>: ${esc(p.nombre)} (${p.coste} puntos).</p>`,
+    no: () => ''
+  };
+  const MASCOTA_NEED = {
+    pendiente: (m) => {
+      const info = resolve(ACCION_INFO, m.necesidad, 'comer');
+      const p = premioDeAccion(m.necesidad);
+      return `<div class="flex items-start gap-3 p-4 rounded-ui-lg bg-primary-soft text-primary">
+        <span class="shrink-0">${Icon(info.icon, 'text-4xl', true)}</span>
+        <div class="space-y-1"><p class="text-xl font-bold">${esc(m.nombre)} ${info.pide}</p>${resolve(NEED_CTA, p ? 'si' : 'no', 'no')(p)}</div>
+      </div>`;
+    },
+    atendida: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-success-soft text-success text-lg font-bold">${Icon('check_circle', 'text-2xl', true)}<span>${esc(m.nombre)} está bien. Hasta la próxima clase.</span></p>`,
+    ninguna: () => ''
+  };
+
+  /* ---- Votacion del nombre ---- */
+  const MASCOTA_VOTACION = {
+    abierta: (m) => `<p class="flex items-center justify-center gap-2 text-ink-soft">${Icon('how_to_vote', 'text-2xl')}<span>Estamos eligiendo su nombre: han votado <strong class="text-ink">${m.votacion.votantes}</strong> de <strong class="text-ink">${m.votacion.total}</strong>. Mira en Canjear.</span></p>`,
+    otro: () => ''
+  };
+
+  /* ---- Diario: lo que le ha pasado ---- */
+  const nombreAlumno = (id) => (findAlumno(id) || { nombre: 'Alguien' }).nombre;
+  const fechaCorta = (d) => (d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '');
+  const DIARIO_TEXTO = {
+    crecio: (e, m) => ({ icon: 'auto_awesome', texto: `${m.nombre} creció: ${etapaNombre(e.etapa)}` }),
+    peligro: (e, m) => ({ icon: 'warning', texto: `${m.nombre} se puso en peligro` }),
+    recuperada: (e, m) => ({ icon: 'favorite', texto: `${m.nombre} se ha recuperado` }),
+    reinicio: (e, m) => ({ icon: 'restart_alt', texto: `${m.nombre} empezó de nuevo` }),
+    accion: (e, m) => {
+      const info = resolve(ACCION_INFO, e.accion, 'comer');
+      return { icon: info.icon, texto: info.verbo(nombreAlumno(e.alumnoId), m.nombre) };
+    },
+    nombre: (e) => ({ icon: 'badge', texto: `La clase eligió el nombre ${e.nombre}` })
+  };
+  const DIARIO_BODY = {
+    lleno: (m) => `
+      <section aria-label="Diario de ${esc(m.nombre)}" class="space-y-2">
+        <h3 class="flex items-center gap-2 text-xl font-bold">${Icon('menu_book', 'text-2xl')}Diario</h3>
+        <ul class="divide-y divide-line rounded-ui-lg border border-line overflow-hidden">${m.diario.map((e) => {
+          const d = resolve(DIARIO_TEXTO, e.tipo, 'crecio')(e, m);
+          return `<li class="flex items-center gap-3 px-4 py-2.5 min-h-tap"><span class="shrink-0 text-primary">${Icon(d.icon, 'text-2xl')}</span><span class="flex-1 min-w-0">${esc(d.texto)}</span><span class="shrink-0 text-sm text-ink-soft tabular-nums">${fechaCorta(e.dia)}</span></li>`;
+        }).join('')}</ul>
+      </section>`,
+    vacio: () => ''
+  };
+
   function MascotaBody(m) {
+    // Etapas ya alcanzadas se ven; las que faltan son un misterio (unknown) aunque las imagenes esten subidas
     const steps = MASCOTA_ETAPAS.map((n, i) => `
       <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === m.etapa ? 'aria-current="step"' : ''}>
-        ${MascotaImg(i, 'w-14 h-14 ' + (i > m.etapa ? 'mascota-futura' : ''))}
-        <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${esc(n)}</span>
+        ${i > m.etapa ? MascotaUnknown('w-14 h-14') : MascotaImg(i, 'w-14 h-14')}
+        <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${i > m.etapa ? '?' : esc(n)}</span>
       </li>`).join('');
     return `
       <div class="flex items-center justify-between gap-3 mb-2">
@@ -168,10 +268,14 @@
       </div>
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
-        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa))}</div></div>
+        ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
+        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa), mascotaAnim && mascotaAnim.accion)}</div></div>
         <p class="text-center text-xl font-bold">Etapa ${m.etapa + 1} de ${m.etapas}: ${esc(etapaNombre(m.etapa))}</p>
+        ${resolve(MASCOTA_NEED, !m.necesidad ? 'ninguna' : m.atendida ? 'atendida' : 'pendiente', 'ninguna')(m)}
         ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
+        ${resolve(DIARIO_BODY, m.diario && m.diario.length ? 'lleno' : 'vacio', 'vacio')(m)}
+        ${resolve(MASCOTA_VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m)}
         <p class="text-center text-ink-soft">Cada punto que ganamos entre todos ayuda a ${esc(m.nombre)} a crecer.</p>
         ${resolve(MASCOTA_PREMIO, m.premio ? 'si' : 'no', 'no')(m)}
       </div>`;
@@ -181,8 +285,26 @@
     if (S.mascota) $('#mascota-body').innerHTML = MascotaBody(S.mascota);
     else closeSheet('sheet-mascota');
   }
+  /** Tras atender a la mascota: abre su pantalla y lanza el GIF de la accion; al acabar vuelve al GIF base. */
+  function playMascotaAnim(accion) {
+    if (!S.mascota) return;
+    const token = Date.now();
+    mascotaAnim = { accion, token };
+    mascotaGrow = false;
+    renderMascota();
+    openSheet('sheet-mascota');
+    store.set(SEEN_KEY, S.mascota.etapa);
+    renderMascotaFab();
+    setTimeout(() => {
+      if (mascotaAnim && mascotaAnim.token === token) {
+        mascotaAnim = null;
+        if (mascotaOpen()) renderMascota();
+      }
+    }, MASCOTA_ANIM_MS);
+  }
   function openMascota() {
     if (!S.mascota) return;
+    mascotaAnim = null;
     mascotaGrow = S.mascota.etapa > seenEtapa();
     renderMascota();
     openSheet('sheet-mascota');
@@ -201,7 +323,7 @@
         ${StudentAvatar(a, 'md')}
         <span class="flex-1 min-w-0 text-xl font-bold truncate">${esc(a.nombre)}</span>
         <span class="flex items-center gap-1.5">${Badges(a, 4)}</span>
-        ${renderStreak(a)}
+        ${StreakChip(a)}
         ${Score({ value: a.puntos, size: 'text-3xl' })}
       </li>`
       )
@@ -245,7 +367,7 @@
           </div>
           ${ProgressBar({ value: a.puntos, max: meta })}
         </div>
-        ${renderStreak(a)}
+        ${StreakChip(a)}
         ${Score({ value: a.puntos, size: 'text-3xl' })}
       </li>`
       )
@@ -263,7 +385,7 @@
         <h3 class="max-w-full text-xl font-bold truncate">${esc(a.nombre)}</h3>
         ${Score({ value: a.puntos, size: 'text-5xl' })}
         <p class="text-ink-soft">puntos</p>
-        <div class="flex flex-wrap items-center justify-center gap-1.5 min-h-[2rem]">${renderStreak(a)}${Badges(a, 4)}</div>
+        <div class="flex flex-wrap items-center justify-center gap-1.5 min-h-[2rem]">${StreakChip(a)}${Badges(a, 4)}</div>
       </article>`
       )
       .join('');
@@ -348,11 +470,12 @@
     si: (list) => `<p class="text-base leading-tight text-primary">Desbloquea: ${esc(list.map(cosmeticLabel).join(', '))}</p>`,
     no: () => ''
   };
+  // Insignias en dos columnas; si el numero es impar, la ultima ocupa las dos
   const BADGE_LEGEND_BODY = {
     lleno: () => sectionCard('sec-insignias', 'bg-primary-soft text-primary', 'military_tech', 'Insignias',
       `<p class="px-4 py-3 text-lg text-ink-soft border-b border-line">Duran ${S.config.insigniaDias || 7} días. Lo que desbloquean es tuyo para siempre.</p>
-      <ul class="divide-y divide-line">${S.insignias
-        .map((i) => `<li class="flex items-center gap-3 px-4 py-2.5 min-h-tap">
+      <ul class="grid grid-cols-2 gap-px bg-line">${S.insignias
+        .map((i, idx) => `<li class="flex items-center gap-3 px-4 py-2.5 min-h-tap bg-surface ${S.insignias.length % 2 === 1 && idx === S.insignias.length - 1 ? 'col-span-2' : ''}">
           <span class="flex items-center justify-center shrink-0 w-11 h-11 rounded-full border border-line bg-surface text-primary">${Icon(safeIcon(i.icono, 'military_tech'), 'text-3xl')}</span>
           <div class="flex-1 min-w-0"><p class="text-lg font-bold leading-tight">${esc(i.nombre)}</p>${renderNote(i.descripcion, 'text-base leading-tight text-ink-soft')}${resolve(UNLOCKS, (i.desbloquea || []).length ? 'si' : 'no', 'no')(i.desbloquea || [])}</div>
         </li>`).join('')}</ul>`),
@@ -361,9 +484,10 @@
   const BadgeLegend = () => resolve(BADGE_LEGEND_BODY, S.insignias.length ? 'lleno' : 'vacio', 'vacio')();
 
   // Indice: todos los apartados a la vista desde el principio; tocar uno lleva a su seccion
+  const hayReglas = (key) => S.reglas.some(RULE_GROUPS[key].filter);
   const SECTION_INDEX = [
-    { id: 'sec-suma', label: 'Suma', icon: 'add_circle', tone: 'bg-success-soft text-success', show: () => true },
-    { id: 'sec-resta', label: 'Resta', icon: 'do_not_disturb_on', tone: 'bg-attention-soft text-attention', show: () => true },
+    { id: 'sec-suma', label: 'Suma', icon: 'add_circle', tone: 'bg-success-soft text-success', show: () => hayReglas('suma') },
+    { id: 'sec-resta', label: 'Resta', icon: 'do_not_disturb_on', tone: 'bg-attention-soft text-attention', show: () => hayReglas('resta') },
     { id: 'sec-racha', label: 'Racha', icon: 'local_fire_department', tone: 'bg-attention-soft text-attention', show: () => true },
     { id: 'sec-insignias', label: 'Insignias', icon: 'military_tech', tone: 'bg-primary-soft text-primary', show: () => S.insignias.length > 0 }
   ];
@@ -372,12 +496,20 @@
       ${SECTION_INDEX.filter((s) => s.show()).map((s) => `<button type="button" data-goto="${s.id}" class="pressable flex flex-1 items-center justify-center gap-2 h-tap rounded-ui text-xl font-bold ${s.tone}">${Icon(s.icon, 'text-3xl')}<span>${s.label}</span></button>`).join('')}
     </nav>`;
 
+  // [suman][restan]: dos columnas; si solo hay una de las dos, ocupa todo el ancho
+  const RULES_GRID = {
+    dos: () => `<div class="grid grid-cols-2 gap-5 items-start">${RuleGroup('suma')}${RuleGroup('resta')}</div>`,
+    suma: () => RuleGroup('suma'),
+    resta: () => RuleGroup('resta')
+  };
+  const RulesGrid = () => resolve(RULES_GRID, hayReglas('suma') && hayReglas('resta') ? 'dos' : hayReglas('suma') ? 'suma' : 'resta', 'dos')();
   const REGLAS_BODY = {
     lleno: () => `
       <div class="space-y-5">
         ${SectionIndex()}
-        <div class="grid grid-cols-2 gap-5 items-start">${RuleGroup('suma')}${RuleGroup('resta')}</div>
-        <div class="grid grid-cols-2 gap-5 items-start">${InfoRacha()}${BadgeLegend()}</div>
+        ${RulesGrid()}
+        ${InfoRacha()}
+        ${BadgeLegend()}
       </div>`,
     vacio: () => renderEmpty('sinReglas')
   };
@@ -385,13 +517,22 @@
 
   /* ---- Premios: disponible o bloqueado ---- */
 
+  // Efecto de un premio -> clave. 'mascota:comer', 'mascota:jugar'... son todos "mascota".
+  const efectoKey = (e) => (String(e).indexOf('mascota:') === 0 ? 'mascota' : String(e));
+  const PRIZE_CTA = {
+    nombre: { icon: 'badge', label: 'Elegir nombre' },
+    estrella: { icon: 'star', label: 'Enviar estrella' },
+    ninguno: { icon: 'redeem', label: 'Canjear' }
+  };
+
   function PrizeAvailable({ premio }) {
+    const cta = resolve(PRIZE_CTA, efectoKey(premio.efecto), 'ninguno');
     return `
       <button type="button" data-pr="${esc(premio.id)}" class="pressable flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface border-2 border-primary">
         <span class="flex items-center justify-center w-20 h-20 rounded-full bg-primary-soft text-primary">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
         <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold">${esc(premio.nombre)}</span>
         <span class="inline-flex items-center gap-1 text-xl text-ink-soft">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
-        <span class="flex items-center justify-center gap-2 w-full h-tap mt-1 rounded-ui bg-primary text-on-primary text-xl font-bold">${Icon('redeem', 'text-3xl')}Canjear</span>
+        <span class="flex items-center justify-center gap-2 w-full h-tap mt-1 rounded-ui bg-primary text-on-primary text-xl font-bold">${Icon(cta.icon, 'text-3xl')}${cta.label}</span>
       </button>`;
   }
 
@@ -420,8 +561,47 @@
       </button>`;
   }
 
+  // Tarjeta sin boton con un mensaje (la mascota no lo necesita ahora, ya votaste, etc.)
+  const mascotaNombre = () => (S.mascota ? S.mascota.nombre : 'La mascota');
+  const PRIZE_MSG = {
+    inactiva: () => 'Ahora no está disponible',
+    atendida: () => `${mascotaNombre()} ya está atendida. Hasta la próxima clase.`,
+    noNecesita: () => `${mascotaNombre()} no necesita esto ahora`,
+    votacionCerrada: () => 'El nombre ya está elegido',
+    votado: () => `Tu voto: ${(findAlumno(S.sel) || {}).votoNombre || ''}`,
+    estrellaEnviada: () => 'Hoy ya has enviado tu estrella'
+  };
+  function PrizeMessage({ premio }, state) {
+    return `
+      <div aria-disabled="true" class="flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface-alt border-2 border-line text-ink-soft">
+        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-surface text-ink-soft">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
+        <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold text-ink">${esc(premio.nombre)}</span>
+        <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}${esc(resolve(PRIZE_MSG, state, 'inactiva')())}</span>
+      </div>`;
+  }
   const PRIZE_CARDS = { available: PrizeAvailable, preview: PrizePreview, locked: PrizeLocked };
-  const getPrizeState = ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : premio.efecto === 'personalizar' ? 'preview' : 'locked');
+  Object.keys(PRIZE_MSG).forEach((k) => { PRIZE_CARDS[k] = (props) => PrizeMessage(props, k); });
+
+  // Estado de cada premio segun su efecto: solo la accion que la mascota pide esta habilitada
+  const enough = ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : 'locked');
+  const PRIZE_STATE = {
+    estandar: enough,
+    personalizar: ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : 'preview'),
+    mascota: (props) => {
+      const m = S.mascota;
+      if (!m) return 'inactiva';
+      if (m.atendida) return 'atendida';
+      if (m.necesidad !== props.premio.efecto.slice(8)) return 'noNecesita';
+      return enough(props);
+    },
+    nombre: (props) => {
+      const v = S.mascota && S.mascota.votacion;
+      if (!v || v.estado !== 'abierta') return 'votacionCerrada';
+      return (findAlumno(S.sel) || {}).votoNombre ? 'votado' : enough(props);
+    },
+    estrella: (props) => ((findAlumno(S.sel) || {}).estrellaHoy ? 'estrellaEnviada' : enough(props))
+  };
+  const getPrizeState = (props) => resolve(PRIZE_STATE, efectoKey(props.premio.efecto), 'estandar')(props);
   function renderPrize(props) {
     return resolve(PRIZE_CARDS, getPrizeState(props), 'locked')(props);
   }
@@ -631,13 +811,135 @@
     if (!a || !p || busy) return;
     if (p.coste > a.puntos) return toast('Todavía no tienes puntos para este premio.', 'info');
     pendingPrize = p;
+    const own = resolve(OWN_DIALOG, efectoKey(p.efecto), 'ninguno');
+    if (own !== OWN_DIALOG.ninguno) return own(a, p);
+    dlgMode = 'confirm';
     $('#dlg-body').innerHTML = ConfirmBody({ a, p });
     openSheet('dlg');
   }
 
+  /* ---- Nombre de la mascota: cada alumno elige uno, una sola vez ---- */
+  let dlgMode = 'confirm';
+  let nameSel = '';
+  const opcionesDe = (p) => String(p.descripcion || '').split(/[;|]/).map((s) => s.trim()).filter(Boolean);
+  function NombreBody({ p }) {
+    const opts = opcionesDe(p).map((o) => `<button type="button" data-nombre-pick="${esc(o)}" aria-pressed="${o === nameSel}" class="pressable flex items-center justify-center min-h-[4.5rem] px-4 rounded-ui-lg text-2xl font-bold border-2 ${o === nameSel ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink'}">${esc(o)}</button>`).join('');
+    return `
+      <div class="flex flex-col gap-5">
+        <div class="text-center space-y-1">
+          <h2 id="dlg-title" class="text-3xl font-bold">¿Cómo se llamará?</h2>
+          <p class="text-ink-soft">Solo puedes elegir una vez. Cuando voten todos, aparecerá su nombre.</p>
+        </div>
+        <div class="grid grid-cols-2 gap-3">${opts}</div>
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button type="button" data-close="dlg" class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>
+          <button type="button" data-nombre-send ${nameSel ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('check', 'text-3xl')}<span>Elegir</span></button>
+        </div>
+      </div>`;
+  }
+  function openNombre(a, p) {
+    nameSel = '';
+    dlgMode = 'nombre';
+    $('#dlg-body').innerHTML = NombreBody({ p });
+    openSheet('dlg');
+  }
+  async function sendNombre() {
+    const a = findAlumno(S.sel);
+    const p = pendingPrize;
+    if (!a || !p || !nameSel || busy) return;
+    busy = true;
+    closeSheet('dlg');
+    const voto = nameSel;
+    const nombre = a.nombre;
+    try {
+      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId: a.id, premioId: p.id, opcion: voto });
+      applyServer(res);
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      S.sel = null;
+      render();
+      toast(`Hecho. ${nombre} ha votado ${voto}.`, 'ok');
+    } catch (err) {
+      console.error('Voto fallido:', err);
+      setStatus('off');
+      render();
+      toast('No se ha podido enviar tu voto. Avisa a tu profe y vuelve a probar.', 'err');
+    } finally {
+      busy = false;
+      pendingPrize = null;
+      nameSel = '';
+    }
+  }
+
+  /* ---- Estrella amable: propones una frase amable a un companero; el profe la revisa ---- */
+  let estrellaSel = { para: '', frase: -1 };
+  function EstrellaBody({ a, p }) {
+    const frases = opcionesDe(p);
+    const mates = [...S.alumnos].filter((x) => x.id !== a.id).sort(byName).map((x) => `
+      <button type="button" data-est-para="${esc(x.id)}" aria-pressed="${x.id === estrellaSel.para}" class="pressable flex items-center gap-3 min-h-[4.5rem] px-3 text-left rounded-ui-lg border-2 ${x.id === estrellaSel.para ? 'border-primary bg-primary-soft' : 'border-line bg-surface'}">
+        ${StudentAvatar(x, 'md')}<span class="text-lg font-bold truncate">${esc(x.nombre)}</span>
+      </button>`).join('');
+    const opts = frases.map((f, i) => `<button type="button" data-est-frase="${i}" aria-pressed="${i === estrellaSel.frase}" class="pressable flex items-center min-h-[3.5rem] px-4 text-left rounded-ui-lg text-xl font-bold border-2 ${i === estrellaSel.frase ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink'}">${esc(f)}</button>`).join('');
+    const ready = estrellaSel.para && estrellaSel.frase >= 0;
+    return `
+      <div class="flex flex-col gap-5 max-h-[80dvh] overflow-y-auto">
+        <div class="text-center space-y-1">
+          <h2 id="dlg-title" class="text-3xl font-bold">Estrella amable</h2>
+          <p class="text-ink-soft">Elige a un compañero y por qué se la das. Tu profe la revisará.</p>
+        </div>
+        <section><h3 class="mb-2 text-xl font-bold">1. ¿A quién?</h3><div class="grid grid-cols-2 gap-3">${mates}</div></section>
+        <section><h3 class="mb-2 text-xl font-bold">2. ¿Por qué?</h3><div class="grid gap-3">${opts}</div></section>
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button type="button" data-close="dlg" class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>No</span></button>
+          <button type="button" data-est-send ${ready ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('star', 'text-3xl')}<span>Enviar</span></button>
+        </div>
+      </div>`;
+  }
+  function openEstrella(a, p) {
+    estrellaSel = { para: '', frase: -1 };
+    dlgMode = 'estrella';
+    $('#dlg-body').innerHTML = EstrellaBody({ a, p });
+    openSheet('dlg');
+  }
+  async function sendEstrella() {
+    const a = findAlumno(S.sel);
+    const p = pendingPrize;
+    if (!a || !p || busy || !estrellaSel.para || estrellaSel.frase < 0) return;
+    const frase = opcionesDe(p)[estrellaSel.frase];
+    busy = true;
+    closeSheet('dlg');
+    try {
+      const res = await apiPost({ action: 'estrella', batchId: uid(), alumnoId: a.id, paraId: estrellaSel.para, frase });
+      applyServer(res);
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      S.sel = null;
+      render();
+      toast('Estrella enviada. Tu profe la revisará.', 'ok');
+    } catch (err) {
+      console.error('Estrella fallida:', err);
+      setStatus('off');
+      render();
+      toast('No se ha podido enviar. Avisa a tu profe y vuelve a probar.', 'err');
+    } finally {
+      busy = false;
+      pendingPrize = null;
+      estrellaSel = { para: '', frase: -1 };
+    }
+  }
+  const redrawDlg = () => {
+    const a = findAlumno(S.sel);
+    if (!a || !pendingPrize) return;
+    $('#dlg-body').innerHTML = dlgMode === 'nombre' ? NombreBody({ p: pendingPrize }) : EstrellaBody({ a, p: pendingPrize });
+  };
+  // Premios con su propia ventana en vez de la confirmacion normal
+  const OWN_DIALOG = { nombre: openNombre, estrella: openEstrella, ninguno: null };
+  OWN_DIALOG.ninguno = () => null;
+
   // Que pasa despues de un canje, segun el efecto del premio (columna efecto de la hoja)
   const POST_REDEEM = {
     personalizar: (id) => openCustom(id),
+    mascota: (id, p) => { S.sel = null; playMascotaAnim(p.efecto.slice(8)); }, // abre a la mascota con su animacion
     ninguno: () => { S.sel = null; } // vuelve al paso 1
   };
 
@@ -661,7 +963,7 @@
       applyServer(res);                          // la verdad del servidor
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
-      resolve(POST_REDEEM, p.efecto, 'ninguno')(alumnoId);
+      resolve(POST_REDEEM, efectoKey(p.efecto), 'ninguno')(alumnoId, p);
       render();
       toast(`Hecho. ${nombre} ha canjeado ${p.nombre}.`, 'ok');
     } catch (err) {
@@ -759,6 +1061,11 @@
   const CLICK_HANDLERS = [
     ['[data-open-mascota]', () => openMascota()],
     ['[data-confirm]', () => doRedeem()],
+    ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
+    ['[data-nombre-send]', () => sendNombre()],
+    ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; redrawDlg(); }],
+    ['[data-est-frase]', (el) => { estrellaSel.frase = Number(el.dataset.estFrase); redrawDlg(); }],
+    ['[data-est-send]', () => sendEstrella()],
     ['[data-custom-save]', () => saveCustom()],
     ['[data-custom-later]', () => closeCustom()],
     ['[data-locked]', (el) => showLocked(el.dataset.locked)],

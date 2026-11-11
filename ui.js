@@ -95,6 +95,22 @@
   const getStreakKind = ({ racha }) => (racha >= 2 ? 'activa' : 'ninguna');
   const renderStreak = (alumno) => resolve(STREAK_CHIPS, getStreakKind(alumno), 'ninguna')(alumno);
 
+  // Indicador para el alumno: siempre visible. "3/5" = clases seguidas / clases del hito; al superar el hito solo el numero.
+  const STREAK_PROGRESS = {
+    cero: ({ hito }) =>
+      `<span class="inline-flex items-center gap-1 px-2 h-8 rounded-full bg-surface-alt text-ink-soft font-bold" title="Racha: 0 de ${hito} clases"><span class="tabular-nums">0/${hito}</span>${Icon('local_fire_department', 'text-xl')}<span class="sr-only"> clases seguidas</span></span>`,
+    dentro: ({ racha, hito }) =>
+      `<span class="inline-flex items-center gap-1 px-2 h-8 rounded-full bg-attention-soft text-attention font-bold" title="Racha: ${racha} de ${hito} clases"><span class="tabular-nums">${racha}/${hito}</span>${Icon('local_fire_department', 'text-xl', true)}<span class="sr-only"> clases seguidas</span></span>`,
+    superado: ({ racha }) =>
+      `<span class="inline-flex items-center gap-1 px-2 h-8 rounded-full bg-attention-soft text-attention font-bold" title="Racha de ${racha} clases"><span class="tabular-nums">${racha}</span>${Icon('local_fire_department', 'text-xl', true)}<span class="sr-only"> clases seguidas</span></span>`
+  };
+  const getStreakProgressKind = ({ racha, hito }) => (racha <= 0 ? 'cero' : racha <= hito ? 'dentro' : 'superado');
+  const renderStreakProgress = (alumno, hito) => {
+    const h = Math.max(1, Number(hito) || 5);
+    const r = Math.max(0, Number(alumno.racha) || 0);
+    return resolve(STREAK_PROGRESS, getStreakProgressKind({ racha: r, hito: h }), 'cero')({ racha: r, hito: h });
+  };
+
   /* ---------- Insignias ---------- */
   const DAYS_LEFT = {
     si: (n) => ` (${n === 0 ? 'último día' : n === 1 ? 'queda 1 día' : 'quedan ' + n + ' días'})`,
@@ -207,7 +223,7 @@
   const closeSheet = (id) => document.getElementById(id).classList.remove('open');
 
   window.UI = {
-    resolve, safeIcon, Icon, COLOR_STYLES, colorStyle, cosmeticLabel, avatarFace, Avatar, renderStreak, renderBadges, renderNote,
+    resolve, safeIcon, Icon, COLOR_STYLES, colorStyle, cosmeticLabel, avatarFace, Avatar, renderStreak, renderStreakProgress, renderBadges, renderNote,
     btnClass, IconButton, Segmented, ProgressBar, renderEmpty, renderStatus, toast, openSheet, closeSheet
   };
 })();
