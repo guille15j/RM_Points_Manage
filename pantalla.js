@@ -803,11 +803,9 @@
   // Botones del editor: normal (tras canjear) o vista previa (sin puntos: Guardar bloqueado)
   const CUSTOM_ACTIONS = {
     normal: ({ ready }) => `
-          <button type="button" data-custom-later ${loading ? 'disabled' : ''} class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('schedule', 'text-3xl')}<span>Después</span></button>
           ${sendBtn({ key: 'custom', attrs: 'data-custom-save', off: !ready, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'check', label: 'Guardar' })}`,
     preview: ({ c }) => `
-          <button type="button" data-custom-later class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('close', 'text-3xl')}<span>Cerrar</span></button>
-          <button type="button" disabled aria-disabled="true" class="${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('lock', 'text-3xl')}<span>Te faltan ${c.falta}</span></button>`
+          <button type="button" disabled aria-disabled="true" class=""${btnClass('primary', 'h-[4.5rem] text-xl')}">${Icon('lock', 'text-3xl')}<span>Te faltan ${c.falta}</span></button>`
   };
   function CustomBody({ c, a }) {
     const av = optionsOf({ tipo: 'avatar', free: S.config.avatares, a });
@@ -815,27 +813,39 @@
     const avatares = av.open.map((k) => resolve(AVATAR_OPTION, optionState(k, c.avatar), 'off')(k)).concat(av.locked.map((x) => AVATAR_OPTION.locked(x.clave))).join('');
     const colores = co.open.map((k) => resolve(COLOR_OPTION, optionState(k, c.color), 'off')(k)).concat(co.locked.map((x) => COLOR_OPTION.locked(x.clave))).join('');
     const ready = av.open.indexOf(c.avatar) >= 0 && co.open.indexOf(c.color) >= 0;
+    // Un paso por pagina (1 = dibujo, 2 = color); la tarjeta de ejemplo se ve siempre arriba
+    const PASOS = {
+      1: () => `
+        <section>
+          <h3 class="mb-3 text-2xl font-bold">Elige tu dibujo</h3>
+          <div class="grid grid-cols-6 gap-3">${avatares}</div>
+        </section>
+        ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
+        <div class="grid grid-cols-1 gap-4 pt-2">
+          <button type="button" data-custom-next ${c.avatar ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}"><span>Siguiente</span>${Icon('arrow_forward', 'text-3xl')}</button>
+        </div>`,
+      2: () => `
+        <section>
+          <h3 class="mb-3 text-2xl font-bold">Elige tu color o fondo</h3>
+          <div class="flex flex-wrap gap-4">${colores}</div>
+        </section>
+        ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button type="button" data-custom-atras ${loading ? 'disabled' : ''} class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('arrow_back', 'text-3xl')}<span>Atrás</span></button>
+          ${resolve(CUSTOM_ACTIONS, c.preview ? 'preview' : 'normal', 'normal')({ ready, c })}
+        </div>`
+    };
     return `
       <div class="space-y-6">
-        <div class="flex items-center gap-5 p-4 rounded-ui-lg border ${colorStyle(c.color).card}">
+        <div class="relative flex items-center gap-5 p-4 pr-20 rounded-ui-lg border ${colorStyle(c.color).card}">
           ${Avatar({ icono: c.avatar || a.avatar, color: c.color, size: 'lg' })}
           <div class="min-w-0">
             <h2 id="custom-title" class="text-3xl font-bold truncate">${esc(a.nombre)}</h2>
             <p class="text-ink-soft">Así se verá tu tarjeta.</p>
           </div>
+          <button type="button" data-custom-later ${loading ? 'disabled' : ''} aria-label="Cerrar" class="pressable absolute right-3 top-3 flex items-center justify-center w-tap h-tap rounded-ui bg-surface text-ink-soft">${Icon('close', 'text-3xl')}</button>
         </div>
-        <section>
-          <h3 class="mb-3 text-2xl font-bold">1. Elige tu dibujo</h3>
-          <div class="grid grid-cols-6 gap-3">${avatares}</div>
-        </section>
-        <section>
-          <h3 class="mb-3 text-2xl font-bold">2. Elige tu color o fondo</h3>
-          <div class="flex flex-wrap gap-4">${colores}</div>
-        </section>
-        ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
-        <div class="grid grid-cols-2 gap-4 pt-2">
-          ${resolve(CUSTOM_ACTIONS, c.preview ? 'preview' : 'normal', 'normal')({ ready, c })}
-        </div>
+        ${resolve(PASOS, c.paso === 2 ? 2 : 1, 1)()}
       </div>`;
   }
 
@@ -1093,7 +1103,7 @@
     if (!a) return;
     const costes = S.premios.filter((p) => p.efecto === 'personalizar').map((p) => p.coste);
     const falta = costes.length ? Math.max(0, Math.min(...costes) - a.puntos) : 0;
-    custom = { alumnoId, avatar: a.avatar || '', color: a.color || '', hint: '', preview: !!preview && falta > 0, falta };
+    custom = { alumnoId, paso: 1, avatar: a.avatar || '', color: a.color || '', hint: '', preview: !!preview && falta > 0, falta };
     renderCustom();
     openSheet('sheet-custom');
   }
@@ -1178,6 +1188,8 @@
     ['[data-est-frase]', (el) => { estrellaSel.frase = Number(el.dataset.estFrase); redrawDlg(); }],
     ['[data-est-send]', () => sendEstrella()],
     ['[data-custom-save]', () => saveCustom()],
+    ['[data-custom-next]', () => { custom.paso = 2; custom.hint = ''; renderCustom(); }],
+    ['[data-custom-atras]', () => { custom.paso = 1; custom.hint = ''; renderCustom(); }],
     ['[data-custom-later]', () => closeCustom()],
     ['[data-locked]', (el) => showLocked(el.dataset.locked)],
     ['[data-av]', (el) => { custom.avatar = el.dataset.av; custom.hint = ''; renderCustom(); }],
