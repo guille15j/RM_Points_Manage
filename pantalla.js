@@ -960,18 +960,25 @@
       </button>`).join('');
     const opts = frases.map((f, i) => `<button type="button" data-est-frase="${i}" aria-pressed="${i === estrellaSel.frase}" class="pressable flex items-center min-h-[3.5rem] px-4 text-left rounded-ui-lg text-xl font-bold border-2 ${i === estrellaSel.frase ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink'}">${esc(f)}</button>`).join('');
     const ready = estrellaSel.para && estrellaSel.frase >= 0;
+    const para = findAlumno(estrellaSel.para);
+    // Un paso por pagina: 1 = a quien, 2 = por que (escoger compañero avanza solo)
+    const PASOS = {
+      1: () => `
+        <section><h3 class="mb-2 text-xl font-bold">¿A quién?</h3><div class="grid grid-cols-2 gap-3">${mates}</div></section>
+        <div class="grid grid-cols-1 gap-4 pt-2">${noBtn()}</div>`,
+      2: () => `
+        <section><h3 class="mb-2 text-xl font-bold">¿Por qué se la das a ${esc(para ? para.nombre : '')}?</h3><div class="grid gap-3">${opts}</div></section>
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button type="button" data-est-atras ${loading ? 'disabled' : ''} class="${btnClass('outline', 'h-[4.5rem] text-xl border-2')}">${Icon('arrow_back', 'text-3xl')}<span>Atrás</span></button>
+          ${sendBtn({ key: 'estrella', attrs: 'data-est-send', off: !ready, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'star', label: 'Enviar' })}
+        </div>`
+    };
     return `
       <div class="flex flex-col gap-5 max-h-[80dvh] overflow-y-auto">
         <div class="text-center space-y-1">
           <h2 id="dlg-title" class="text-3xl font-bold">Estrella amable</h2>
-          <p class="text-ink-soft">Elige a un compañero y por qué se la das. Tu profe la revisará.</p>
         </div>
-        <section><h3 class="mb-2 text-xl font-bold">1. ¿A quién?</h3><div class="grid grid-cols-2 gap-3">${mates}</div></section>
-        <section><h3 class="mb-2 text-xl font-bold">2. ¿Por qué?</h3><div class="grid gap-3">${opts}</div></section>
-        <div class="grid grid-cols-2 gap-4 pt-2">
-          ${noBtn()}
-          ${sendBtn({ key: 'estrella', attrs: 'data-est-send', off: !ready, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'star', label: 'Enviar' })}
-        </div>
+        ${resolve(PASOS, estrellaSel.paso === 2 && para ? 2 : 1, 1)()}
       </div>`;
   }
   function openEstrella(a, p) {
@@ -1165,7 +1172,8 @@
     ['[data-confirm]', () => doRedeem('confirm')],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],
-    ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; redrawDlg(); }],
+    ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; estrellaSel.paso = 2; redrawDlg(); }],
+    ['[data-est-atras]', () => { estrellaSel.paso = 1; estrellaSel.frase = -1; redrawDlg(); }],
     ['[data-est-frase]', (el) => { estrellaSel.frase = Number(el.dataset.estFrase); redrawDlg(); }],
     ['[data-est-send]', () => sendEstrella()],
     ['[data-custom-save]', () => saveCustom()],
