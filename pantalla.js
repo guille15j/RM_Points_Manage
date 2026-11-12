@@ -817,17 +817,17 @@
     const PASOS = {
       1: () => `
         <section>
-          <h3 class="mb-3 text-2xl font-bold">Elige tu dibujo</h3>
-          <div class="grid grid-cols-6 gap-3">${avatares}</div>
+          <h3 class="mb-2 text-2xl font-bold">Elige tu dibujo</h3>
+          <div class="grid grid-cols-10 gap-2">${avatares}</div>
         </section>
         ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
-        <div class="grid grid-cols-1 gap-4 pt-2">
+        <div class="grid grid-cols-1 gap-4">
           <button type="button" data-custom-next ${c.avatar ? '' : 'disabled'} class="${btnClass('primary', 'h-[4.5rem] text-xl')}"><span>Siguiente</span>${Icon('arrow_forward', 'text-3xl')}</button>
         </div>`,
       2: () => `
         <section>
           <h3 class="mb-3 text-2xl font-bold">Elige tu color o fondo</h3>
-          <div class="flex flex-wrap gap-4">${colores}</div>
+          <div class="flex flex-wrap gap-3">${colores}</div>
         </section>
         ${resolve(CUSTOM_HINT, c.hint ? 'si' : 'no', 'no')(c.hint)}
         <div class="grid grid-cols-2 gap-4 pt-2">
@@ -836,14 +836,14 @@
         </div>`
     };
     return `
-      <div class="space-y-6">
-        <div class="relative flex items-center gap-5 p-4 pr-20 rounded-ui-lg border ${colorStyle(c.color).card}">
-          ${Avatar({ icono: c.avatar || a.avatar, color: c.color, size: 'lg' })}
+      <div class="space-y-4">
+        <div class="relative flex items-center gap-4 p-3 pr-20 rounded-ui-lg border ${colorStyle(c.color).card}">
+          ${Avatar({ icono: c.avatar || a.avatar, color: c.color, size: 'md' })}
           <div class="min-w-0">
-            <h2 id="custom-title" class="text-3xl font-bold truncate">${esc(a.nombre)}</h2>
+            <h2 id="custom-title" class="text-2xl font-bold truncate">${esc(a.nombre)}</h2>
             <p class="text-ink-soft">Así se verá tu tarjeta.</p>
           </div>
-          <button type="button" data-custom-later ${loading ? 'disabled' : ''} aria-label="Cerrar" class="pressable absolute right-3 top-3 flex items-center justify-center w-tap h-tap rounded-ui bg-surface text-ink-soft">${Icon('close', 'text-3xl')}</button>
+          <button type="button" data-custom-later ${loading ? 'disabled' : ''} aria-label="Cerrar" class="pressable absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-tap h-tap rounded-ui bg-surface text-ink-soft">${Icon('close', 'text-3xl')}</button>
         </div>
         ${resolve(PASOS, c.paso === 2 ? 2 : 1, 1)()}
       </div>`;
