@@ -772,16 +772,22 @@
 
   /* ---- Editor de identidad ---- */
   const optBase = 'pressable relative flex items-center justify-center aspect-square rounded-ui overflow-hidden';
-  const LOCK = `<span class="absolute bottom-0.5 right-0.5 flex items-center justify-center w-6 h-6 rounded-full bg-surface text-ink-soft">${Icon('lock', 'text-base')}</span>`;
+  // Icono de la insignia que desbloquea un cosmetico (para que el nino asocie al instante dibujo/fondo <-> insignia)
+  const insigniaIconoDe = (k) => {
+    const c = (S.config.cosmeticos || []).find((x) => x.clave === k);
+    const i = c && (S.insignias || []).find((x) => x.id === c.insignia);
+    return i && i.icono ? safeIcon(i.icono, 'lock') : 'lock';
+  };
+  const LOCK_AV = (k) => `<span class="absolute bottom-0.5 right-0.5 flex items-center justify-center w-8 h-8 rounded-full bg-surface border border-line text-ink">${Icon(insigniaIconoDe(k), 'text-xl', true)}</span>`;
   const AVATAR_OPTION = {
     on: (k) => `<button type="button" data-av="${esc(k)}" aria-pressed="true" aria-label="${esc(k)}" class="${optBase} border-4 border-primary bg-primary-soft text-primary">${avatarFace(k, 'lg')}</button>`,
     off: (k) => `<button type="button" data-av="${esc(k)}" aria-pressed="false" aria-label="${esc(k)}" class="${optBase} border-2 border-line bg-surface text-ink">${avatarFace(k, 'lg')}</button>`,
-    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="${optBase} border-2 border-dashed border-line bg-surface-alt text-ink-soft opacity-60">${avatarFace(k, 'lg')}${LOCK}</button>`
+    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="${optBase} border-2 border-dashed border-line bg-surface-alt text-ink-soft opacity-60">${avatarFace(k, 'lg')}${LOCK_AV(k)}</button>`
   };
   const COLOR_OPTION = {
     on: (k) => `<button type="button" data-co="${esc(k)}" aria-pressed="true" aria-label="${esc(colorStyle(k).label)}" class="pressable flex items-center justify-center w-16 h-16 rounded-full border-4 border-primary ${colorStyle(k).swatch}">${Icon('check', 'text-3xl text-ink')}</button>`,
     off: (k) => `<button type="button" data-co="${esc(k)}" aria-pressed="false" aria-label="${esc(colorStyle(k).label)}" class="pressable w-16 h-16 rounded-full border-2 border-line ${colorStyle(k).swatch}"></button>`,
-    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="pressable relative flex items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-line opacity-50 ${colorStyle(k).swatch}">${Icon('lock', 'text-3xl text-ink')}</button>`
+    locked: (k) => `<button type="button" data-locked="${esc(k)}" aria-label="Bloqueado: ${esc(cosmeticLabel(k))}" class="pressable relative flex items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-line opacity-50 ${colorStyle(k).swatch}">${Icon(insigniaIconoDe(k), 'text-3xl text-ink', true)}</button>`
   };
 
   /** Opciones de un tipo: gratis (hoja Config) + cosmeticos desbloqueados + cosmeticos bloqueados. */
