@@ -591,12 +591,18 @@
     ninguno: { icon: 'redeem', label: 'Canjear' }
   };
 
+  // Columna descripcion de un premio: "texto visible # opcion1;opcion2". Antes del # se ve en la carta; despues van las opciones.
+  const descVisible = (p) => { const s = String(p.descripcion || ''); const i = s.indexOf('#'); return i < 0 ? '' : s.slice(0, i).trim(); };
+  const DESC_LINE = { si: (txt) => `<span class="text-lg leading-tight text-ink-soft">${esc(txt)}</span>`, no: () => '' };
+  const descLine = (p) => resolve(DESC_LINE, descVisible(p) ? 'si' : 'no', 'no')(descVisible(p));
+
   function PrizeAvailable({ premio }) {
     const cta = resolve(PRIZE_CTA, efectoKey(premio.efecto), 'ninguno');
     return `
       <button type="button" data-pr="${esc(premio.id)}" class="pressable flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface border-2 border-primary">
         <span class="flex items-center justify-center w-20 h-20 rounded-full bg-primary-soft text-primary">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
         <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold">${esc(premio.nombre)}</span>
+        ${descLine(premio)}
         <span class="inline-flex items-center gap-1 text-xl text-ink-soft">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
         <span class="flex items-center justify-center gap-2 w-full h-tap mt-1 rounded-ui bg-primary text-on-primary text-xl font-bold">${Icon(cta.icon, 'text-3xl')}${cta.label}</span>
       </button>`;
@@ -608,6 +614,7 @@
       <div aria-disabled="true" class="flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface-alt border-2 border-line text-ink-soft">
         <span class="flex items-center justify-center w-20 h-20 rounded-full bg-surface text-ink-soft">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
         <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold text-ink">${esc(premio.nombre)}</span>
+        ${descLine(premio)}
         <span class="inline-flex items-center gap-1 text-xl">${Score({ value: premio.coste, size: 'text-xl text-ink' })}puntos</span>
         ${ProgressBar({ value: saldo, max: premio.coste, track: 'bg-line' })}
         <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}Te faltan ${premio.coste - saldo}</span>
@@ -887,7 +894,10 @@
   /* ---- Nombre de la mascota: cada alumno elige uno, una sola vez ---- */
   let dlgMode = 'confirm';
   let nameSel = '';
-  const opcionesDe = (p) => String(p.descripcion || '').split(/[;|]/).map((s) => s.trim()).filter(Boolean);
+  // Opciones = lo que va despues del primer # (o toda la celda si no hay #), separadas por ; o |
+  const opcionesDe = (p) => { const s = String(p.descripcion || ''); const i = s.indexOf('#'); return (i < 0 ? s : s.slice(i + 1)).split(/[;|]/).map((x) => x.trim()).filter(Boolean); };
+  // El servidor parte la celda entera por ; y |, asi que la primera opcion le llega como "descripcion#opcion": se envia tal como el la conoce
+  const valorServidor = (p, o) => String(p.descripcion || '').split(/[;|]/).map((x) => x.trim()).find((x) => x === o || x.slice(x.lastIndexOf('#') + 1).trim() === o && x.indexOf('#') >= 0) || o;
   function NombreBody({ p }) {
     const opts = opcionesDe(p).map((o) => `<button type="button" data-nombre-pick="${esc(o)}" aria-pressed="${o === nameSel}" class="pressable flex items-center justify-center min-h-[4.5rem] px-4 rounded-ui-lg text-2xl font-bold border-2 ${o === nameSel ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink'}">${esc(o)}</button>`).join('');
     return `
@@ -919,7 +929,7 @@
     const voto = nameSel;
     const nombre = a.nombre;
     try {
-      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId: a.id, premioId: p.id, opcion: voto });
+      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId: a.id, premioId: p.id, opcion: valorServidor(p, voto) });
       applyServer(res);
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -974,7 +984,7 @@
     const a = findAlumno(S.sel);
     const p = pendingPrize;
     if (!a || !p || busy || !estrellaSel.para || estrellaSel.frase < 0) return;
-    const frase = opcionesDe(p)[estrellaSel.frase];
+    const frase = valorServidor(p, opcionesDe(p)[estrellaSel.frase]);
     busy = true;
     loading = 'estrella';
     paintLoading();
