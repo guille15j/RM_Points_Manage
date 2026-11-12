@@ -965,7 +965,7 @@
     const PASOS = {
       1: () => `
         <section><h3 class="mb-2 text-xl font-bold">¿A quién?</h3><div class="grid grid-cols-2 gap-3">${mates}</div></section>
-        <div class="grid grid-cols-1 gap-4 pt-2">${noBtn()}</div>`,
+        `,
       2: () => `
         <section><h3 class="mb-2 text-xl font-bold">¿Por qué se la das a ${esc(para ? para.nombre : '')}?</h3><div class="grid gap-3">${opts}</div></section>
         <div class="grid grid-cols-2 gap-4 pt-2">
@@ -975,8 +975,9 @@
     };
     return `
       <div class="flex flex-col gap-5 max-h-[80dvh] overflow-y-auto">
-        <div class="text-center space-y-1">
-          <h2 id="dlg-title" class="text-3xl font-bold">Estrella amable</h2>
+        <div class="relative flex items-center justify-center min-h-[3.5rem] px-14">
+          <h2 id="dlg-title" class="text-3xl font-bold text-center">Estrella amable</h2>
+          <button type="button" data-close="dlg" ${loading ? 'disabled' : ''} aria-label="Cerrar" class="pressable absolute right-0 top-0 flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft">${Icon('close', 'text-3xl')}</button>
         </div>
         ${resolve(PASOS, estrellaSel.paso === 2 && para ? 2 : 1, 1)()}
       </div>`;
