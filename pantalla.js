@@ -41,6 +41,10 @@
     status: isDemo() ? 'demo' : 'off'
   };
   let busy = false;               // operacion en curso: pausa el refresco automatico
+  // Un reintento de la MISMA operacion reutiliza su batchId: si el servidor ya la registro, no se duplica; si nunca llego, se registra.
+  let pendBatch = null;
+  const batchFor = (sig) => { if (!pendBatch || pendBatch.sig !== sig) pendBatch = { sig, id: uid() }; return pendBatch.id; };
+  const batchDone = () => { pendBatch = null; };
   let loading = '';               // boton que esta esperando respuesta: 'confirm' | 'nombre' | 'estrella' | 'custom' | 'cuida'
 
   // Boton de envio: mientras espera la respuesta queda desactivado y dice "Un momento..." (sin animacion: perfil alumno)
@@ -642,14 +646,24 @@
     noNecesita: () => `${mascotaNombre()} no necesita esto ahora`,
     votacionCerrada: () => 'El nombre ya está elegido',
     votado: () => `Tu voto: ${(findAlumno(S.sel) || {}).votoNombre || ''}`,
-    estrellaEnviada: () => 'Hoy ya has enviado tu estrella'
+    estrellaEnviada: () => ({ html: `Ya has enviado tu estrella. Otra en <span data-countdown class="tabular-nums">${fmtCountdown()}</span>` }),
+    bloqueadoTpv: () => 'Espera a que tu profe te desbloquee'
   };
+  const msgHtml = (m) => (typeof m === 'object' ? m.html : esc(m));
+  // Tiempo hasta las 00:00 (cuando se puede volver a enviar una estrella)
+  const msHastaMedianoche = () => { const d = new Date(); d.setHours(24, 0, 0, 0); return d - new Date(); };
+  function fmtCountdown() {
+    const s = Math.max(0, Math.floor(msHastaMedianoche() / 1000));
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${p2(Math.floor(s / 3600))}:${p2(Math.floor((s % 3600) / 60))}:${p2(s % 60)}`;
+  }
+  const isUnlocked = () => (findAlumno(S.sel) || {}).desbloqueado !== false;
   function PrizeMessage({ premio }, state) {
     return `
       <div aria-disabled="true" class="flex flex-col items-center gap-3 p-6 text-center rounded-ui-lg bg-surface-alt border-2 border-line text-ink-soft">
         <span class="flex items-center justify-center w-20 h-20 rounded-full bg-surface text-ink-soft">${Icon(UI_ICON(premio.icono), 'text-5xl')}</span>
         <span class="flex items-center justify-center min-h-[4rem] text-2xl font-bold text-ink">${esc(premio.nombre)}</span>
-        <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}${esc(resolve(PRIZE_MSG, state, 'inactiva')())}</span>
+        <span class="inline-flex items-center gap-2 text-lg font-bold text-ink">${Icon('lock', 'text-2xl')}${msgHtml(resolve(PRIZE_MSG, state, 'inactiva')())}</span>
       </div>`;
   }
   const PRIZE_CARDS = { available: PrizeAvailable, preview: PrizePreview, locked: PrizeLocked };
@@ -674,7 +688,7 @@
     },
     estrella: (props) => ((findAlumno(S.sel) || {}).estrellaHoy ? 'estrellaEnviada' : enough(props))
   };
-  const getPrizeState = (props) => resolve(PRIZE_STATE, efectoKey(props.premio.efecto), 'estandar')(props);
+  const getPrizeState = (props) => (isUnlocked() ? resolve(PRIZE_STATE, efectoKey(props.premio.efecto), 'estandar')(props) : 'bloqueadoTpv');
   function renderPrize(props) {
     return resolve(PRIZE_CARDS, getPrizeState(props), 'locked')(props);
   }
@@ -690,6 +704,28 @@
   const renderPrizes = ({ premios, saldo }) =>
     resolve(PRIZE_LISTS, premios.length ? 'lista' : 'vacio', 'vacio')({ premios, saldo });
 
+  /* ---- Aviso: canje bloqueado por el profesor ---- */
+  const TPV_BANNER = {
+    si: () => `
+      <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg bg-attention-soft border-2 border-attention">
+        <span class="text-attention">${Icon('lock', 'text-4xl')}</span>
+        <p class="flex-1 text-xl font-bold">Pide a tu profe que te desbloquee para canjear.</p>
+      </div>`,
+    no: () => ''
+  };
+  /* ---- Aviso: estrellas recibidas en la clase anterior ---- */
+  const limpiaFrase = (s) => String(s || '').split('#').pop().trim();
+  const ESTRELLAS_AVISO = {
+    si: (list) => `
+      <div class="flex items-start gap-3 p-3 mb-6 rounded-ui-lg bg-primary-soft">
+        <span class="text-primary">${Icon('star', 'text-3xl', true)}</span>
+        <div class="min-w-0">
+          <p class="font-bold">Estrellas de la clase anterior</p>
+          <ul class="text-ink-soft">${list.slice(0, 4).map((e) => `<li><strong class="text-ink">${esc(e.de)}</strong>: ${esc(limpiaFrase(e.frase))}</li>`).join('')}${list.length > 4 ? `<li>y ${list.length - 4} más</li>` : ''}</ul>
+        </div>
+      </div>`,
+    no: () => ''
+  };
   /* ---- Aviso: personalizacion pendiente ---- */
   const CUSTOM_PENDING = {
     si: () => `
@@ -738,6 +774,8 @@
           </div>
           <button type="button" data-change class="${btnClass('outline', 'shrink-0 text-xl border-2')}">${Icon('swap_horiz', 'text-3xl')}<span>Cambiar</span></button>
         </div>
+        ${resolve(TPV_BANNER, isUnlocked() ? 'no' : 'si', 'no')()}
+        ${resolve(ESTRELLAS_AVISO, (a.estrellasRecibidas || []).length ? 'si' : 'no', 'no')(a.estrellasRecibidas || [])}
         ${resolve(CUSTOM_PENDING, a.pendientes > 0 ? 'si' : 'no', 'no')()}
         <h2 class="text-3xl font-bold">Elige tu premio</h2>
         <p class="mt-1 mb-6 text-ink-soft">Los premios con candado todavía no se pueden canjear.</p>
@@ -945,7 +983,8 @@
     const voto = nameSel;
     const nombre = a.nombre;
     try {
-      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId: a.id, premioId: p.id, opcion: valorServidor(p, voto) });
+      const res = await apiPost({ action: 'canje', batchId: batchFor(`voto|${a.id}|${p.id}|${voto}`), alumnoId: a.id, premioId: p.id, opcion: valorServidor(p, voto) });
+      batchDone();
       applyServer(res);
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -1013,7 +1052,8 @@
     loading = 'estrella';
     paintLoading();
     try {
-      const res = await apiPost({ action: 'estrella', batchId: uid(), alumnoId: a.id, paraId: estrellaSel.para, frase });
+      const res = await apiPost({ action: 'estrella', batchId: batchFor(`estrella|${a.id}|${estrellaSel.para}|${frase}`), alumnoId: a.id, paraId: estrellaSel.para, frase });
+      batchDone();
       applyServer(res);
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -1067,14 +1107,10 @@
     const nombre = a.nombre;
     const alumnoId = a.id;
 
-    const snapshot = clone(S.alumnos);  // para el rollback
-    a.puntos -= p.coste;                 // optimista: descuenta al instante
-    if (p.efecto === 'personalizar') a.pendientes = (a.pendientes || 0) + 1;
-    persist();
-    render();
-
+    // SIN actualizacion optimista: nada cambia en pantalla ni se guarda hasta que el servidor responde
     try {
-      const res = await apiPost({ action: 'canje', batchId: uid(), alumnoId, premioId: p.id });
+      const res = await apiPost({ action: 'canje', batchId: batchFor(`canje|${alumnoId}|${p.id}`), alumnoId, premioId: p.id });
+      batchDone();
       applyServer(res);                          // la verdad del servidor
       persist();
       setStatus(isDemo() ? 'demo' : 'ok');
@@ -1083,11 +1119,9 @@
       toast(`Hecho. ${nombre} ha canjeado ${p.nombre}.`, 'ok');
     } catch (err) {
       console.error('Canje fallido:', err);
-      S.alumnos = snapshot;                     // ROLLBACK: puntos restaurados
-      persist();
       setStatus('off');
       render();
-      toast('No se ha podido canjear. Avisa a tu profe y vuelve a probar.', 'err');
+      toast(`No se ha canjeado nada (${err.message}). Avisa a tu profe.`, 'err');
     } finally {
       loading = '';
       closeSheet('dlg');
@@ -1126,16 +1160,10 @@
     loading = 'custom';
     renderCustom();                             // Guardar pasa a "Un momento..." hasta recibir respuesta
     const c = custom;
-    const a = findAlumno(c.alumnoId);
-    const snapshot = clone(S.alumnos);
-    // Optimista: la tarjeta cambia al instante en las tres vistas
-    a.avatar = c.avatar;
-    a.color = c.color;
-    a.pendientes = Math.max(0, (a.pendientes || 0) - 1);
-    persist();
-    render();
+    // SIN actualizacion optimista: la tarjeta cambia cuando el servidor confirma
     try {
-      const res = await apiPost({ action: 'perfil', batchId: uid(), alumnoId: c.alumnoId, avatar: c.avatar, color: c.color });
+      const res = await apiPost({ action: 'perfil', batchId: batchFor(`perfil|${c.alumnoId}|${c.avatar}|${c.color}`), alumnoId: c.alumnoId, avatar: c.avatar, color: c.color });
+      batchDone();
       loading = '';
       applyServer(res);
       persist();
@@ -1146,16 +1174,28 @@
     } catch (err) {
       loading = '';
       console.error('Personalizacion fallida:', err);
-      S.alumnos = snapshot;                     // ROLLBACK: el alumno conserva su personalizacion pendiente
-      persist();
       setStatus('off');
       render();
       renderCustom();                           // el editor sigue abierto para reintentar
-      toast('No se ha podido guardar. Prueba otra vez.', 'err');
+      toast(`No se ha guardado nada (${err.message}). Prueba otra vez.`, 'err');
     } finally {
       loading = '';
       busy = false;
     }
+  }
+
+  /** Boton Cambiar: el perfil vuelve a quedar bloqueado (el servidor lo registra; un reintento si falla). */
+  function cambiarAlumno() {
+    const a = findAlumno(S.sel);
+    if (a && a.desbloqueado === true && S.config.tpvBloqueo !== false) {
+      a.desbloqueado = false;                              // se bloquea al instante en esta pantalla (direccion segura)
+      const bid = uid();
+      const cerrar = () => apiPost({ action: 'tpv_cerrar', batchId: bid, alumnoId: a.id });
+      cerrar().then((res) => { applyServer(res); persist(); render(); })
+        .catch(() => sleep(2000).then(cerrar).then((res) => { applyServer(res); persist(); render(); }).catch((e) => console.error('No se pudo bloquear:', e)));
+    }
+    S.sel = null;
+    render();
   }
 
   /* ======================= 6. SINCRONIZACION ======================= */
@@ -1207,7 +1247,7 @@
     ['[data-tab]', (el) => { S.tab = el.dataset.tab; persist(); render(); window.scrollTo(0, 0); }],
     ['[data-view]', (el) => { S.view = el.dataset.view; persist(); render(); }],
     ['[data-sel]', (el) => { S.sel = el.dataset.sel; render(); window.scrollTo(0, 0); }],
-    ['[data-change]', () => { S.sel = null; render(); }],
+    ['[data-change]', () => cambiarAlumno()],
     ['[data-pr]', (el) => askRedeem(el.dataset.pr)],
     ['#btn-refresh', () => refresh(true)]
   ];
@@ -1223,6 +1263,20 @@
   setInterval(() => {
     if (!document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
   }, CFG.POLL_MS || 15000);
+
+  // Contador de la estrella: solo cambia el texto (sin volver a pintar); al llegar a 0 se sincroniza
+  let contadorAvisado = false;
+  setInterval(() => {
+    const els = document.querySelectorAll('[data-countdown]');
+    if (!els.length) { contadorAvisado = false; return; }
+    els.forEach((el) => { el.textContent = fmtCountdown(); });
+    if (msHastaMedianoche() <= 1000 && !contadorAvisado) { contadorAvisado = true; setTimeout(() => refresh(false), 2000); }
+  }, 1000);
+  // Mientras un alumno espera a que el profesor lo desbloquee, se comprueba cada pocos segundos
+  setInterval(() => {
+    const a = findAlumno(S.sel);
+    if (a && a.desbloqueado === false && !document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
+  }, 4000);
 
   // Arranque: pinta lo guardado al instante y sincroniza en segundo plano
   render();

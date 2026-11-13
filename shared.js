@@ -147,7 +147,8 @@
    *  { action:'perfil', batchId, alumnoId, avatar, color }
  *  { action:'canje',  ..., opcion }                         (premio con efecto 'nombre')
  *  { action:'estrella', batchId, alumnoId, paraId, frase }  (alumno propone)
- *  { action:'estrella_resolver', batchId, estrellaId, ok }  (profesor)
+  *  { action:'estrella_resolver', batchId, estrellaId, ok }  (profesor)
+ *  { action:'tpv_abrir'|'tpv_cerrar', batchId, alumnoId }  (desbloqueo de canje)
  *  { action:'rol', batchId, alumnoId, accion:'confirmar'|'saltar' }  (profesor)
  *  { action:'mascota', batchId, accion:'reiniciar'|'cerrar_nombre' }  (profesor)
    * El batchId hace la operacion idempotente: reintentar no duplica movimientos.

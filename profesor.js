@@ -93,10 +93,22 @@
     return d > 0 ? 'up' : d < 0 ? 'down' : 'none';
   }
 
+  /* ---- Interruptor de canje junto al nombre (accion inmediata, no pasa por el carrito) ---- */
+  const tpvSwitch = (a, on, to, label) => `
+    <button type="button" role="switch" aria-checked="${on}" aria-label="${label} canje de ${esc(a.nombre)}" data-tpv="${esc(a.id)}" data-to="${to}" class="pressable flex items-center justify-center w-14 shrink-0">
+      <span class="relative inline-block w-10 h-6 rounded-full ${on ? 'bg-primary' : 'bg-line'}"><span class="absolute top-0.5 ${on ? 'left-[1.125rem]' : 'left-0.5'} w-5 h-5 rounded-full bg-surface"></span></span>
+    </button>`;
+  const TPV_TOGGLE = {
+    abierto: (a) => tpvSwitch(a, true, 'cerrar', 'Bloquear'),
+    cerrado: (a) => tpvSwitch(a, false, 'abrir', 'Desbloquear'),
+    espera: () => `<span class="flex items-center justify-center w-14 shrink-0 text-ink-soft">${Icon('hourglass_top', 'text-xl')}</span>`,
+    no: () => ''
+  };
   /* ---- Fila de alumno: seleccionada o en reposo ---- */
   const makeStudentRow = (icon, tone, pressed) => ({ a, sim }) => `
-    <li>
-      <button type="button" data-al="${esc(a.id)}" aria-pressed="${pressed}" class="pressable flex items-center w-full gap-3 px-3 text-left min-h-[3.25rem] ${tone}">
+    <li class="flex items-stretch ${tone}">
+      ${resolve(TPV_TOGGLE, S.config && S.config.tpvBloqueo === false ? 'no' : tpvBusy.has(a.id) ? 'espera' : a.desbloqueado ? 'abierto' : 'cerrado', 'no')(a)}
+      <button type="button" data-al="${esc(a.id)}" aria-pressed="${pressed}" class="pressable flex items-center flex-1 min-w-0 gap-3 pr-3 text-left min-h-[3.25rem]">
         ${Icon(icon, 'text-primary')}
         <span class="flex-1 min-w-0 font-medium truncate">${esc(a.nombre)}</span>
         ${renderStreak(a)}
@@ -426,6 +438,29 @@
         </div>`,
     enCarrito: () => queuedNote('Ya está en el carrito. Se aplicará al enviar.')
   };
+  const tpvBusy = new Set();
+  async function tpvToggle(id, to) {
+    if (tpvBusy.has(id)) return;
+    tpvBusy.add(id); render();
+    try {
+      const res = await apiPost({ action: 'tpv_' + to, batchId: uid(), alumnoId: id });
+      applyServer(res); persist(); setStatus(isDemo() ? 'demo' : 'ok');
+    } catch (err) {
+      setStatus('off'); toast(`No se ha podido cambiar (${err.message})`, 'err');
+    } finally { tpvBusy.delete(id); render(); }
+  }
+  const EST_ACCION = {
+    libre: (e, pts) => `
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" data-est-no="${esc(e.id)}" class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
+        <button type="button" data-est-ok="${esc(e.id)}" class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
+      </div>`,
+    enCarrito: (e) => `
+      <div class="flex items-center gap-2">
+        <p class="flex-1 text-ink-soft">${Icon('shopping_cart', 'text-xl align-middle')} ${(S.cart.find((c) => c.tipo === 'estrella_res' && c.ref === e.id) || {}).ok ? 'Aprobada' : 'Rechazada'} en el carrito</p>
+        <button type="button" data-est-undo="${esc(e.id)}" class="pressable h-tap px-4 rounded-ui border border-line bg-surface text-ink font-semibold">Deshacer</button>
+      </div>`
+  };
   const ESTRELLAS = {
     lleno: (list, pts) => `
       <section class="space-y-2">
@@ -434,10 +469,7 @@
           <li class="p-3 rounded-ui border border-line space-y-2">
             <p><strong>${esc(e.deNombre)}</strong> a <strong>${esc(e.paraNombre)}</strong></p>
             <p class="text-ink-soft">${esc(e.frase)}</p>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" data-est-no="${esc(e.id)}" class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
-              <button type="button" data-est-ok="${esc(e.id)}" class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
-            </div>
+            ${resolve(EST_ACCION, enCarrito.est(e.id) ? 'enCarrito' : 'libre', 'libre')(e, pts)}
           </li>`).join('')}</ul>
       </section>`,
     vacio: () => `<section class="space-y-1"><h3 class="flex items-center gap-2 font-semibold">${Icon('star', 'text-xl')}Estrellas amables</h3><p class="text-ink-soft">Nada pendiente de revisar.</p></section>`
@@ -482,7 +514,7 @@
   function renderClase() {
     const pts = (S.config && S.config.ayudantePuntos) || 2;
     const ept = (S.config && S.config.estrellaPuntos) || 2;
-    const est = pendientesEstrellas();
+    const est = S.estrellas || [];
     $('#clase-body').innerHTML =
       resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
       resolve(ESTRELLAS, est.length ? 'lleno' : 'vacio', 'vacio')(est, ept) +
@@ -767,6 +799,8 @@
       queueClase({ tipo: 'rol', alumnoId: S.ayudante.id, accion: el.dataset.rol, ref: el.dataset.rol, delta: conf ? ((S.config && S.config.ayudantePuntos) || 2) : 0,
         nota: conf ? 'Ayudante de turno: hecho' : 'Ayudante de turno: pasa al siguiente' }, 'Añadido al carrito');
     }],
+    ['[data-tpv]', (el) => tpvToggle(el.dataset.tpv, el.dataset.to)],
+    ['[data-est-undo]', (el) => { S.cart = S.cart.filter((c) => !(c.tipo === 'estrella_res' && c.ref === el.dataset.estUndo)); persist(); render(); renderClase(); }],
     ['[data-est-ok]', (el) => estrellaCarrito(el.dataset.estOk, true)],
     ['[data-est-no]', (el) => estrellaCarrito(el.dataset.estNo, false)],
     ['[data-cerrar-nombre]', () => { if (!enCarrito.masc('cerrar_nombre')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'cerrar_nombre', nota: 'Cerrar la votación del nombre' }, 'Añadido al carrito'); }],

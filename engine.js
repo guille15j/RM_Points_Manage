@@ -161,6 +161,7 @@ const Engine = (function () {
       retoIcono: str(g('reto_icono')) || 'flag',
       retoDesde: g('reto_desde'),
       mascotaActiva: str(g('mascota_activa')).trim().toLowerCase() !== 'false',
+      tpvBloqueo: str(g('tpv_bloqueo')).trim().toLowerCase() !== 'false', // FALSE = sin bloqueo de canje
       mascotaNombre: str(g('mascota_nombre')).trim() || 'Mascota desconocida',
       mascotaDesde: g('mascota_desde'),
       mascotaEtapas: etapasMascota(g('mascota_etapas')),
@@ -351,6 +352,40 @@ const Engine = (function () {
       porAlumno, ganador: cerrada && ranking.length ? ranking[0] : '', fecha
     };
   }
+  /** Clase anterior a hoy (estrictamente antes): jueves -> martes, martes -> jueves pasado. */
+  function claseAnterior(hoy, diasClase) {
+    const n = dayNum(hoy);
+    for (let i = 1; i <= 7; i++) {
+      const key = new Date((n - i) * 86400000).toISOString().slice(0, 10);
+      if (diasClase.indexOf(isoDow(key)) >= 0) return key;
+    }
+    return '';
+  }
+  /** TPV: un alumno solo puede canjear si el profesor lo ha desbloqueado. Se vuelve a bloquear tras canjear/enviar estrella o al pulsar Cambiar. */
+  function tpvAbiertos(led) {
+    const m = {};
+    led.forEach((r) => {
+      if (r.tipo === 'tpv') m[str(r.alumnoId)] = str(r.ref) === 'abrir';
+      else if (r.tipo === 'canje') m[str(r.alumnoId)] = false;
+      else if (r.tipo === 'estrella') m[str(r.ref)] = false; // en 'estrella' el alumno que envia va en ref
+    });
+    return m;
+  }
+  /** Estrellas aprobadas recibidas en la clase anterior: { alumnoId: [{de, frase}] }. */
+  function estrellasRecibidas(led, ctx, diasClase, hoy, nombres) {
+    const dia = claseAnterior(hoy, diasClase);
+    const res = {};
+    led.forEach((m) => { if (m.tipo === 'estrella_res') res[str(m.ref)] = m; });
+    const out = {};
+    led.forEach((m) => {
+      if (m.tipo !== 'estrella' || toDay(m.fecha, ctx) !== dia) return;
+      const r = res[str(m.id)];
+      if (!r || str(r.nota) === 'Rechazada') return;
+      const para = str(m.alumnoId);
+      (out[para] = out[para] || []).push({ de: nombres[str(m.ref)] || '', frase: str(m.nota) });
+    });
+    return out;
+  }
   /** Estrellas amables pendientes de que el profesor las revise. */
   function estrellasPendientes(led) {
     const resueltas = {};
@@ -430,6 +465,10 @@ const Engine = (function () {
     const it = insigniaTables(led, ctx, c.insigniaDias);
     const unlocks = unlockMap(items);
     const vot = votacionNombre(led, items, alumnosAct, c);
+    const tpv = tpvAbiertos(led);
+    const nombresAl = {};
+    alumnosAct.forEach((a) => (nombresAl[str(a.id)] = str(a.nombre)));
+    const recibidas = estrellasRecibidas(led, ctx, c.diasClase, hoy, nombresAl);
     const estHoy = {};
     led.forEach((m) => { if (m.tipo === 'estrella' && toDay(m.fecha, ctx) === hoy) estHoy[str(m.ref)] = true; });
 
@@ -447,7 +486,9 @@ const Engine = (function () {
         cosmeticos: cosmeticosDe(it.ever[id], unlocks),
         pendientes: pend[id] || 0,
         votoNombre: vot.porAlumno[id] || '',
-        estrellaHoy: !!estHoy[id]
+        estrellaHoy: !!estHoy[id],
+        desbloqueado: !c.tpvBloqueo || !!tpv[id],
+        estrellasRecibidas: recibidas[id] || []
       };
     });
 
@@ -518,7 +559,7 @@ const Engine = (function () {
       ayudante: ay ? { id: str(ay.id), nombre: str(ay.nombre) } : null,
       config: {
         rachaHito: c.rachaHito, rachaBonus: c.rachaBonus, ruletaBonus: c.ruletaBonus, avatares: c.avatares, colores: c.colores,
-        diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos
+        diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos, tpvBloqueo: c.tpvBloqueo
       },
       ts: ctx.now.toISOString()
     };
@@ -619,8 +660,14 @@ const Engine = (function () {
           }
         }
       });
+    } else if (p.action === 'tpv_abrir' || p.action === 'tpv_cerrar') {
+      // Control remoto del profesor: sin desbloqueo no se puede canjear. Cerrar tambien lo usa el iPad al pulsar Cambiar.
+      const id = alumnoValido(p.alumnoId);
+      const abrir = p.action === 'tpv_abrir';
+      if (!!tpvAbiertos(cur())[id] !== abrir) add(id, 'tpv', 0, abrir ? 'Canje desbloqueado' : 'Canje bloqueado', abrir ? 'profesor' : 'tpv', abrir ? 'abrir' : 'cerrar');
     } else if (p.action === 'canje') {
       const id = alumnoValido(p.alumnoId);
+      if (c.tpvBloqueo && !tpvAbiertos(cur())[id]) throw new Error('Pide a tu profe que te desbloquee');
       const premio = items.filter((i) => (i.tipo === 'premio' || i.tipo === 'cuidado') && isActivo(i) && str(i.id) === str(p.premioId))[0];
       if (!premio) throw new Error('Premio no válido');
       if (premio.tipo === 'cuidado' && !accionDe(premio.efecto)) throw new Error('Cuidado sin acción válida');
@@ -648,6 +695,7 @@ const Engine = (function () {
       const id = alumnoValido(p.alumnoId);
       const para = alumnoValido(p.paraId);
       if (para === id) throw new Error('Elige a un compañero');
+      if (c.tpvBloqueo && !tpvAbiertos(cur())[id]) throw new Error('Pide a tu profe que te desbloquee');
       const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.efecto) === 'estrella')[0];
       if (!premio) throw new Error('La estrella amable no está disponible');
       const frase = str(p.frase).trim();
