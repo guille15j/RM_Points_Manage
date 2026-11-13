@@ -416,7 +416,7 @@
   const pendientesEstrellas = () => (S.estrellas || []).filter((e) => !enCarrito.est(e.id));
 
   // Punto rojo en el boton: hay algo que revisar (estrellas) o la mascota esta en peligro
-  const CLASE_DOT = { si: () => $('#clase-dot').classList.remove('hidden'), no: () => $('#clase-dot').classList.add('hidden') };
+  const CLASE_DOT = { si: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.remove('hidden')), no: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.add('hidden')) };
   const hayAviso = () => pendientesEstrellas().length > 0 || !!(S.mascota && S.mascota.peligro);
   const renderClaseDot = () => resolve(CLASE_DOT, hayAviso() ? 'si' : 'no', 'no')();
 
@@ -807,7 +807,8 @@
     ['[data-reset-ask]', () => { confirmReset = true; renderClase(); }],
     ['[data-reset-cancel]', () => { confirmReset = false; renderClase(); }],
     ['[data-reset-ok]', () => { if (!enCarrito.masc('reiniciar')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'reiniciar', nota: 'Reiniciar la mascota desde el huevo' }, 'Añadido al carrito'); }],
-    ['#btn-clase', () => openClase()],
+    ['#btn-mas', () => openSheet('sheet-mas')],
+    ['#btn-clase', () => { closeSheet('sheet-mas'); openClase(); }],
     ['[data-del]', (el) => deleteMov(el.dataset.del)],
     ['[data-edit]', (el) => openEdit(el.dataset.edit)],
     ['[data-remove]', () => deleteMov(edit.id)],
@@ -824,9 +825,8 @@
     ['[data-ins]', (el) => addInsignia(el.dataset.ins)],
     ['[data-spin]', () => spinWheel()],
     ['[data-wheel-add]', () => wheelToCart()],
-    ['#btn-wheel', () => openWheel()],
-    ['#btn-badge', () => openBadges()],
-    ['[data-q]', (el) => quick(el.dataset.q)],
+    ['#btn-badge', () => { closeSheet('sheet-mas'); openBadges(); }],
+    ['[data-q]', (el) => { closeSheet('sheet-mas'); quick(el.dataset.q); }],
     ['#custom-add', () => customAmount(1)],
     ['#custom-sub', () => customAmount(-1)],
     ['#sel-all', () => { S.alumnos.forEach((a) => selected.add(a.id)); renderList(); }],
