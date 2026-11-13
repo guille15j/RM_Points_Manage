@@ -705,10 +705,10 @@
     resolve(PRIZE_LISTS, premios.length ? 'lista' : 'vacio', 'vacio')({ premios, saldo });
 
   /* ---- Aviso: canje bloqueado por el profesor ---- */
-  // Modal flotante (no ocupa espacio): deja libre la cabecera para poder pulsar Cambiar
+  // Solo cubre la cuadricula de premios (no la pagina): Cambiar y las pestanas siguen libres
   const TPV_BANNER = {
     si: () => `
-      <div class="fixed inset-x-0 bottom-0 top-28 z-20 flex items-center justify-center bg-ink/40" role="alertdialog" aria-live="polite">
+      <div class="absolute inset-0 z-10 flex items-start justify-center pt-16 bg-page/85 rounded-ui-lg" role="alert">
         <div class="flex items-center gap-4 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
           <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
           <p class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</p>
@@ -716,7 +716,6 @@
       </div>`,
     no: () => ''
   };
-  const limpiaFrase = (s) => String(s || '').split('#').pop().trim();
   const ESTRELLAS_AVISO = {
     si: (list) => `
       <p class="inline-flex items-center gap-2 mb-4 text-lg text-ink-soft" aria-label="Estrellas recibidas">
@@ -773,12 +772,14 @@
           </div>
           <button type="button" data-change class="${btnClass('outline', 'shrink-0 text-xl border-2')}">${Icon('swap_horiz', 'text-3xl')}<span>Cambiar</span></button>
         </div>
-        ${resolve(TPV_BANNER, isUnlocked() ? 'no' : 'si', 'no')()}
         ${resolve(ESTRELLAS_AVISO, (a.estrellasRecibidas || []).length ? 'si' : 'no', 'no')(a.estrellasRecibidas || [])}
         ${resolve(CUSTOM_PENDING, a.pendientes > 0 ? 'si' : 'no', 'no')()}
         <h2 class="text-3xl font-bold">Elige tu premio</h2>
         <p class="mt-1 mb-6 text-ink-soft">Los premios con candado todavía no se pueden canjear.</p>
-        ${renderPrizes({ premios: S.premios, saldo: a.puntos })}
+        <div class="relative">
+          ${resolve(TPV_BANNER, isUnlocked() ? 'no' : 'si', 'no')()}
+          ${renderPrizes({ premios: S.premios, saldo: a.puntos })}
+        </div>
       </section>`;
   }
 
