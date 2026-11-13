@@ -26,7 +26,7 @@
     </div>
   </header>
 
-  <main class="px-3 pt-3 has-dock" style="padding-bottom: calc(22rem + env(safe-area-inset-bottom))">
+  <main class="px-3 pt-3 has-dock" style="padding-bottom: calc(21rem + env(safe-area-inset-bottom))">
     <div id="banner"></div>
     <div class="flex items-center justify-between min-h-[2.75rem] pb-1">
       <span id="selinfo" class="text-sm text-ink-soft"></span>
@@ -41,17 +41,17 @@
   <!-- Barra de acciones (zona del pulgar) -->
   <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
     <div class="grid grid-cols-3 gap-2 mb-2">
-      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
-      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
-      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-tap rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
+      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
+      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
+      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
     </div>
     <div id="motives" class="grid grid-cols-4 gap-2 mb-2" aria-label="Motivos frecuentes"></div>
     <div class="grid grid-cols-5 gap-2 mb-2">
-      <button type="button" data-q="-10" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
-      <button type="button" data-q="-5" class="pressable h-tap rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
-      <button type="button" data-q="5" class="pressable h-tap rounded-ui border border-line bg-surface text-success text-lg font-semibold">+5</button>
-      <button type="button" data-q="10" class="pressable h-tap rounded-ui border border-line bg-surface text-success text-lg font-semibold">+10</button>
-      <button type="button" data-q="reset" class="pressable h-tap flex flex-col items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="text-xs font-semibold leading-none">A cero</span></button>
+      <button type="button" data-q="-10" class="pressable h-11 rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
+      <button type="button" data-q="-5" class="pressable h-11 rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
+      <button type="button" data-q="5" class="pressable h-11 rounded-ui border border-line bg-surface text-success text-lg font-semibold">+5</button>
+      <button type="button" data-q="10" class="pressable h-11 rounded-ui border border-line bg-surface text-success text-lg font-semibold">+10</button>
+      <button type="button" data-q="reset" class="pressable h-11 flex flex-col items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="text-xs font-semibold leading-none">A cero</span></button>
     </div>
     <div class="flex gap-2">
       <input id="custom" type="number" inputmode="numeric" pattern="[0-9]*" min="1" placeholder="Otro valor" aria-label="Otro valor"
