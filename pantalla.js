@@ -724,7 +724,7 @@
     clave: () => `
       <form data-tpv-form class="flex items-center gap-3 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
         <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
-        <input id="tpv-clave" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
+        <input id="tpv-clave" type="password" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
         <button type="submit" class="pressable h-tap px-5 rounded-ui bg-primary text-on-primary text-xl font-bold">Abrir</button>
         <button type="button" data-tpv-cancel aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft">${Icon('close', 'text-3xl')}</button>
       </form>`
