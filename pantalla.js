@@ -705,25 +705,24 @@
     resolve(PRIZE_LISTS, premios.length ? 'lista' : 'vacio', 'vacio')({ premios, saldo });
 
   /* ---- Aviso: canje bloqueado por el profesor ---- */
+  // Modal flotante (no ocupa espacio): deja libre la cabecera para poder pulsar Cambiar
   const TPV_BANNER = {
     si: () => `
-      <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg bg-attention-soft border-2 border-attention">
-        <span class="text-attention">${Icon('lock', 'text-4xl')}</span>
-        <p class="flex-1 text-xl font-bold">Pide a tu profe que te desbloquee para canjear.</p>
+      <div class="fixed inset-x-0 bottom-0 top-28 z-20 flex items-center justify-center bg-ink/40" role="alertdialog" aria-live="polite">
+        <div class="flex items-center gap-4 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
+          <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
+          <p class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</p>
+        </div>
       </div>`,
     no: () => ''
   };
-  /* ---- Aviso: estrellas recibidas en la clase anterior ---- */
   const limpiaFrase = (s) => String(s || '').split('#').pop().trim();
   const ESTRELLAS_AVISO = {
     si: (list) => `
-      <div class="flex items-start gap-3 p-3 mb-6 rounded-ui-lg bg-primary-soft">
-        <span class="text-primary">${Icon('star', 'text-3xl', true)}</span>
-        <div class="min-w-0">
-          <p class="font-bold">Estrellas de la clase anterior</p>
-          <ul class="text-ink-soft">${list.slice(0, 4).map((e) => `<li><strong class="text-ink">${esc(e.de)}</strong>: ${esc(limpiaFrase(e.frase))}</li>`).join('')}${list.length > 4 ? `<li>y ${list.length - 4} más</li>` : ''}</ul>
-        </div>
-      </div>`,
+      <p class="inline-flex items-center gap-2 mb-4 text-lg text-ink-soft" aria-label="Estrellas recibidas">
+        <span class="text-primary">${Icon('star', 'text-2xl', true)}</span>
+        <span class="font-semibold text-ink">${list.slice(0, 6).map((e) => esc(e.de)).join(', ')}${list.length > 6 ? ` y ${list.length - 6} más` : ''}</span>
+      </p>`,
     no: () => ''
   };
   /* ---- Aviso: personalizacion pendiente ---- */
