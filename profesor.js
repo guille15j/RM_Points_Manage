@@ -452,13 +452,13 @@
   const EST_ACCION = {
     libre: (e, pts) => `
       <div class="grid grid-cols-2 gap-2">
-        <button type="button" data-est-no="${esc(e.id)}" class="pressable h-tap rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
-        <button type="button" data-est-ok="${esc(e.id)}" class="pressable h-tap rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
+        <button type="button" data-est-no="${esc(e.id)}" class="pressable h-11 rounded-ui border border-line bg-surface text-ink font-semibold">Rechazar</button>
+        <button type="button" data-est-ok="${esc(e.id)}" class="pressable h-11 rounded-ui bg-primary text-on-primary font-semibold">Aprobar +${pts}</button>
       </div>`,
     enCarrito: (e) => `
       <div class="flex items-center gap-2">
         <p class="flex-1 text-ink-soft">${Icon('shopping_cart', 'text-xl align-middle')} ${(S.cart.find((c) => c.tipo === 'estrella_res' && c.ref === e.id) || {}).ok ? 'Aprobada' : 'Rechazada'} en el carrito</p>
-        <button type="button" data-est-undo="${esc(e.id)}" class="pressable h-tap px-4 rounded-ui border border-line bg-surface text-ink font-semibold">Deshacer</button>
+        <button type="button" data-est-undo="${esc(e.id)}" class="pressable h-11 px-4 rounded-ui border border-line bg-surface text-ink font-semibold">Deshacer</button>
       </div>`
   };
   const ESTRELLAS = {
