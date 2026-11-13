@@ -387,6 +387,15 @@ const Engine = (function () {
     return out;
   }
   /** Estrellas amables pendientes de que el profesor las revise. */
+  /** Companeros a los que `de` envio una estrella hace menos de 2 semanas (no puede repetir todavia). */
+  const ESTRELLA_ESPERA_DIAS = 14;
+  function estrellaBloqueados(led, ctx, de, hoyDia) {
+    const out = [];
+    led.forEach((m) => {
+      if (m.tipo === 'estrella' && str(m.ref) === str(de) && hoyDia - dayNum(toDay(m.fecha, ctx)) < ESTRELLA_ESPERA_DIAS && out.indexOf(str(m.alumnoId)) < 0) out.push(str(m.alumnoId));
+    });
+    return out;
+  }
   function estrellasPendientes(led) {
     const resueltas = {};
     led.forEach((m) => { if (m.tipo === 'estrella_res') resueltas[str(m.ref)] = true; });
@@ -487,6 +496,7 @@ const Engine = (function () {
         pendientes: pend[id] || 0,
         votoNombre: vot.porAlumno[id] || '',
         estrellaHoy: !!estHoy[id],
+        estrellaBloqueados: estrellaBloqueados(led, ctx, id, dayNum(hoy)),
         desbloqueado: !c.tpvBloqueo || !!tpv[id],
         estrellasRecibidas: recibidas[id] || []
       };
@@ -701,6 +711,7 @@ const Engine = (function () {
       const frase = str(p.frase).trim();
       if (splitOpciones(premio.descripcion).indexOf(frase) < 0) throw new Error('Frase no válida');
       if (led.some((m) => m.tipo === 'estrella' && str(m.ref) === id && toDay(m.fecha, ctx) === hoy)) throw new Error('Hoy ya has enviado tu estrella');
+      if (estrellaBloqueados(cur(), ctx, id, dayNum(hoy)).indexOf(para) >= 0) throw new Error('Ya le enviaste una estrella hace menos de 2 semanas');
       add(para, 'estrella', 0, frase, 'tpv', id);
     } else if (p.action === 'estrella_resolver') {
       doEstrella(p.estrellaId, p.ok === true);
