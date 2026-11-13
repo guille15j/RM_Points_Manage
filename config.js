@@ -9,7 +9,7 @@
  * DEMO_DATA_URL:   JSON de prueba: volcado de las pestanas de la hoja (alumnos, reglasYPremios, config, movimientos).
  */
 window.APP_CONFIG = {
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxpp1dSQGaS1gOC0OyfgS1fn_dIxa7iu12yZybZJGx7ZreyXOC64Rh7fKs9ZPuDJP5i/exec',
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxkY59Dqvyd3fqjpz0-8DNNVxVRd5VOmyamJ1_3DPpsFeTL5u_5r_uITzTv99jq4WME/exec',
   TOKEN: 'cambia-esto-por-un-secreto',
   POLL_MS: 15000,
   DEMO_DATA_URL: 'datos-prueba.json'
