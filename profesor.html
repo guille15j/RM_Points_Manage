@@ -40,20 +40,15 @@
 
   <!-- Barra de acciones (zona del pulgar) -->
   <footer class="fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line px-3 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem)">
-    <div class="grid grid-cols-3 gap-2 mb-2">
-      <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
-      <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
-      <button id="btn-wheel" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">casino</span><span>Ruleta</span></button>
-    </div>
     <div id="motives" class="grid grid-cols-4 gap-2 mb-2" aria-label="Motivos frecuentes"></div>
-    <div class="grid grid-cols-5 gap-2 mb-2">
+    <div class="grid grid-cols-4 gap-2 mb-2">
       <button type="button" data-q="-10" class="pressable h-11 rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;10</button>
       <button type="button" data-q="-5" class="pressable h-11 rounded-ui border border-line bg-surface text-danger text-lg font-semibold">&minus;5</button>
       <button type="button" data-q="5" class="pressable h-11 rounded-ui border border-line bg-surface text-success text-lg font-semibold">+5</button>
       <button type="button" data-q="10" class="pressable h-11 rounded-ui border border-line bg-surface text-success text-lg font-semibold">+10</button>
-      <button type="button" data-q="reset" class="pressable h-11 flex flex-col items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="text-xs font-semibold leading-none">A cero</span></button>
     </div>
     <div class="flex gap-2">
+      <button id="btn-mas" type="button" aria-label="Más acciones" class="pressable relative flex items-center justify-center w-tap h-tap shrink-0 rounded-ui border border-line bg-surface text-ink"><span class="icon">apps</span><span id="clase-dot-mas" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
       <input id="custom" type="number" inputmode="numeric" pattern="[0-9]*" min="1" placeholder="Otro valor" aria-label="Otro valor"
              class="min-w-0 flex-1 h-tap px-3 rounded-ui border border-line bg-page text-ink placeholder-ink-soft/70 outline-none focus:border-primary">
       <button id="custom-sub" type="button" aria-label="Restar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui border border-line bg-surface text-danger"><span class="icon">remove</span></button>
@@ -121,6 +116,23 @@
         <button type="button" data-close="sheet-wheel" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
       </div>
       <div id="wheel-body" class="p-4"></div>
+    </div>
+  </div>
+
+
+  <!-- Hoja: mas acciones (uso poco frecuente) -->
+  <div id="sheet-mas" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Más acciones">
+    <div class="sheet-bg" data-close="sheet-mas"></div>
+    <div class="sheet-panel flex flex-col w-full bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Más</h2>
+        <button type="button" data-close="sheet-mas" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div class="p-3 space-y-2">
+        <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
+        <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
+        <button type="button" data-q="reset" class="pressable h-11 flex flex-row gap-3 items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="font-semibold">A cero</span></button>
+      </div>
     </div>
   </div>
 
