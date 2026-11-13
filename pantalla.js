@@ -706,16 +706,40 @@
 
   /* ---- Aviso: canje bloqueado por el profesor ---- */
   // Solo cubre la cuadricula de premios (no la pagina): Cambiar y las pestanas siguen libres
+  const CLAVE_TPV = 'OPEN';
+  let pideClave = false;
   const TPV_BANNER = {
     si: () => `
       <div class="absolute inset-0 z-10 flex items-start justify-center pt-16 bg-page/85 rounded-ui-lg" role="alert">
-        <div class="flex items-center gap-4 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
-          <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
-          <p class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</p>
-        </div>
+        ${resolve(TPV_CARD, pideClave ? 'clave' : 'aviso', 'aviso')()}
       </div>`,
     no: () => ''
   };
+  const TPV_CARD = {
+    aviso: () => `
+      <button type="button" data-tpv-clave class="pressable flex items-center gap-4 p-6 mx-6 max-w-xl text-left rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
+        <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
+        <span class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</span>
+      </button>`,
+    clave: () => `
+      <form data-tpv-form class="flex items-center gap-3 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
+        <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
+        <input id="tpv-clave" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
+        <button type="submit" class="pressable h-tap px-5 rounded-ui bg-primary text-on-primary text-xl font-bold">Abrir</button>
+        <button type="button" data-tpv-cancel aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft">${Icon('close', 'text-3xl')}</button>
+      </form>`
+  };
+  async function abrirManual(valor) {
+    if (String(valor).trim().toUpperCase() !== CLAVE_TPV) { toast('Contraseña incorrecta', 'err'); return; }
+    const a = findAlumno(S.sel);
+    if (!a || busy) return;
+    busy = true;
+    try {
+      const res = await apiPost({ action: 'tpv_abrir', batchId: batchFor(`abrir|${a.id}`), alumnoId: a.id });
+      batchDone(); pideClave = false; applyServer(res); persist();
+    } catch (err) { toast(`No se ha desbloqueado (${err.message})`, 'err'); }
+    finally { busy = false; render(); }
+  }
   const ESTRELLAS_AVISO = {
     si: (list) => `
       <p class="inline-flex items-center gap-2 mb-4 text-lg text-ink-soft" aria-label="Estrellas recibidas">
@@ -1009,9 +1033,10 @@
   let estrellaSel = { para: '', frase: -1 };
   function EstrellaBody({ a, p }) {
     const frases = opcionesDe(p);
+    const espera = a.estrellaBloqueados || [];
     const mates = [...S.alumnos].filter((x) => x.id !== a.id).sort(byName).map((x) => `
-      <button type="button" data-est-para="${esc(x.id)}" aria-pressed="${x.id === estrellaSel.para}" class="pressable flex items-center gap-3 min-h-[4.5rem] px-3 text-left rounded-ui-lg border-2 ${x.id === estrellaSel.para ? 'border-primary bg-primary-soft' : 'border-line bg-surface'}">
-        ${StudentAvatar(x, 'md')}<span class="text-lg font-bold truncate">${esc(x.nombre)}</span>
+      <button type="button" data-est-para="${esc(x.id)}" ${espera.includes(x.id) ? 'disabled' : ''} aria-pressed="${x.id === estrellaSel.para}" class="pressable flex items-center gap-3 min-h-[4.5rem] px-3 text-left rounded-ui-lg border-2 ${espera.includes(x.id) ? 'border-line bg-surface-alt text-ink-soft opacity-60' : x.id === estrellaSel.para ? 'border-primary bg-primary-soft' : 'border-line bg-surface'}">
+        ${StudentAvatar(x, 'md')}<span class="text-lg font-bold truncate">${esc(x.nombre)}</span>${espera.includes(x.id) ? Icon('lock', 'ml-auto text-2xl') : ''}
       </button>`).join('');
     const opts = frases.map((f, i) => `<button type="button" data-est-frase="${i}" aria-pressed="${i === estrellaSel.frase}" class="pressable flex items-center min-h-[3.5rem] px-4 text-left rounded-ui-lg text-xl font-bold border-2 ${i === estrellaSel.frase ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink'}">${esc(f)}</button>`).join('');
     const ready = estrellaSel.para && estrellaSel.frase >= 0;
@@ -1195,6 +1220,7 @@
         .catch(() => sleep(2000).then(cerrar).then((res) => { applyServer(res); persist(); render(); }).catch((e) => console.error('No se pudo bloquear:', e)));
     }
     S.sel = null;
+    pideClave = false;
     render();
   }
 
@@ -1248,6 +1274,8 @@
     ['[data-view]', (el) => { S.view = el.dataset.view; persist(); render(); }],
     ['[data-sel]', (el) => { S.sel = el.dataset.sel; render(); window.scrollTo(0, 0); }],
     ['[data-change]', () => cambiarAlumno()],
+    ['[data-tpv-clave]', () => { pideClave = true; render(); const i = $('#tpv-clave'); i && i.focus(); }],
+    ['[data-tpv-cancel]', () => { pideClave = false; render(); }],
     ['[data-pr]', (el) => askRedeem(el.dataset.pr)],
     ['#btn-refresh', () => refresh(true)]
   ];
@@ -1264,6 +1292,11 @@
     if (!document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
   }, CFG.POLL_MS || 15000);
 
+  document.addEventListener('submit', (ev) => {
+    if (!ev.target.matches('[data-tpv-form]')) return;
+    ev.preventDefault();
+    abrirManual(($('#tpv-clave') || {}).value || '');
+  });
   // Contador de la estrella: solo cambia el texto (sin volver a pintar); al llegar a 0 se sincroniza
   let contadorAvisado = false;
   setInterval(() => {
@@ -1275,7 +1308,7 @@
   // Mientras un alumno espera a que el profesor lo desbloquee, se comprueba cada pocos segundos
   setInterval(() => {
     const a = findAlumno(S.sel);
-    if (a && a.desbloqueado === false && !document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
+    if (a && a.desbloqueado === false && !pideClave && !document.hidden && !busy && !$('#dlg').classList.contains('open') && !custom) refresh(false);
   }, 4000);
 
   // Arranque: pinta lo guardado al instante y sincroniza en segundo plano
