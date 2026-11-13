@@ -743,7 +743,7 @@
   const ESTRELLAS_AVISO = {
     si: (list) => `
       <p class="inline-flex items-center gap-2 mb-4 text-lg text-ink-soft" aria-label="Estrellas recibidas">
-        <span class="text-primary">${Icon('star', 'text-2xl', true)}</span>
+        <span class="text-primary">${Icon('star', 'text-2xl', true)} Estrellas Amables Recibidas: </span>
         <span class="font-semibold text-ink">${list.slice(0, 6).map((e) => esc(e.de)).join(', ')}${list.length > 6 ? ` y ${list.length - 6} más` : ''}</span>
       </p>`,
     no: () => ''
