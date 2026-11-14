@@ -174,7 +174,7 @@ html.theme-alumno *:not([class*="cos-deg-"]):not([class*="cos-dorado"]), html.th
 .cos-dorado, .cos-dorado-av, .cos-deg-aurora, .cos-deg-aurora-av, .cos-deg-atardecer, .cos-deg-atardecer-av,
 .cos-deg-oceano, .cos-deg-oceano-av, .cos-deg-bosque, .cos-deg-bosque-av {
   background-size: 300% 300%;
-  animation: cos-flow 10s ease-in-out infinite alternate;
+  animation: cos-flow 5s ease-in-out infinite alternate;
 }
 @keyframes cos-flow { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 
