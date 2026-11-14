@@ -18,8 +18,8 @@
 
 /* ---------- Perfil PROFESOR ---------- */
 html.theme-profesor {
-  --root-size: 12px;          /* 1rem = 15px: todo el perfil escala desde aqui */
-  --tap: 3rem;                /* zona tactil minima (45px) */
+  --root-size: 12px;          /* 1rem = 12px: todo el perfil escala desde aqui */
+  --tap: 3rem;                /* zona tactil minima (36px) */
   --radius: 0.5rem;
   --radius-lg: 0.75rem;
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -43,26 +43,27 @@ html.theme-profesor {
 
 /* ---------- Perfil ALUMNO ---------- */
 html.theme-alumno {
-  --root-size: 18px;          /* 1rem = 20px */
-  --tap: 3.5rem;              /* zona tactil minima (70px) */
+  --root-size: 18px;          /* 1rem = 18px */
+  --tap: 3.5rem;              /* zona tactil minima (63px) */
   --radius: 1rem;
   --radius-lg: 1.5rem;
   --font-ui: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", sans-serif;
 
-  --c-page: 10 12 16;            /* casi negro azulado, no negro puro (cansa menos) */
+  /* Tema OSCURO (OLED): fondo casi negro, texto blanco roto, un unico acento azul claro */
+  --c-page: 10 12 16;
   --c-surface: 24 27 33;
   --c-surface-alt: 36 40 48;
   --c-line: 58 64 74;
-  --c-ink: 232 234 238;          /* blanco roto, sin deslumbrar */
+  --c-ink: 232 234 238;
   --c-ink-soft: 160 167 179;
-  --c-primary: 125 170 225;      /* azul claro: acento sereno sobre fondo oscuro */
+  --c-primary: 125 170 225;
   --c-primary-soft: 30 45 66;
-  --c-on-primary: 10 16 26;      /* texto oscuro sobre botones azules */
+  --c-on-primary: 10 16 26;    /* texto oscuro sobre botones azules claros */
   --c-success: 110 200 150;
   --c-success-soft: 22 48 37;
   --c-danger: 235 135 135;
   --c-danger-soft: 58 30 30;
-  --c-attention: 240 192 96;     /* ámbar, nunca rojo */
+  --c-attention: 240 192 96;   /* avisos en ambar, nunca en rojo */
   --c-attention-soft: 52 40 16;
 }
 
@@ -101,7 +102,8 @@ input[type="checkbox"] { accent-color: rgb(var(--c-primary)); }
 }
 
 /* Sin animaciones: en el perfil alumno por diseno, en el resto si el sistema lo pide */
-html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
+/* Excepcion: los degradados cosmeticos se mueven muy despacio (se apagan con "Reducir movimiento") */
+html.theme-alumno *:not([class*="cos-deg-"]):not([class*="cos-dorado"]), html.theme-alumno *::before, html.theme-alumno *::after {
   animation: none !important;
   transition: none !important;
   scroll-behavior: auto !important;
@@ -157,16 +159,24 @@ html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
 .cos-lavanda-av { background: #5b4a8c; }
 .cos-menta { background: #1f3a2e; border-color: #3f7a62; }
 .cos-menta-av { background: #2f7a5a; }
-.cos-dorado { background: linear-gradient(135deg, #3d3414, #4d4116); border-color: #8a7424; }
-.cos-dorado-av { background: linear-gradient(135deg, #8a7222, #a88a2a); }
-.cos-deg-aurora { background: linear-gradient(135deg, #1d3a30 0%, #1f3050 55%, #382a50 100%); border-color: #3f5f80; }
-.cos-deg-aurora-av { background: linear-gradient(135deg, #2f7a60 0%, #3a5fa0 55%, #6a4aa0 100%); }
-.cos-deg-atardecer { background: linear-gradient(135deg, #4a2d22 0%, #4a2536 55%, #35294a 100%); border-color: #7a4a4a; }
-.cos-deg-atardecer-av { background: linear-gradient(135deg, #b0602a 0%, #b04a68 55%, #6a4a98 100%); }
-.cos-deg-oceano { background: linear-gradient(135deg, #1a3a42 0%, #1c3050 55%, #26284c 100%); border-color: #3a6a86; }
-.cos-deg-oceano-av { background: linear-gradient(135deg, #2a8a9a 0%, #3a68b0 55%, #4a48a8 100%); }
-.cos-deg-bosque { background: linear-gradient(135deg, #223d1c 0%, #1c3d33 55%, #2e3d18 100%); border-color: #4a7a44; }
-.cos-deg-bosque-av { background: linear-gradient(135deg, #4a8a2e 0%, #2a8a68 55%, #6a8a2a 100%); }
+.cos-dorado { background: linear-gradient(120deg, #5a4a10, #a8861c, #5a4a10, #c9a227); border-color: #c9a227; }
+.cos-dorado-av { background: linear-gradient(120deg, #8a6e14, #e0b82e, #8a6e14, #f0cc4a); }
+.cos-deg-aurora { background: linear-gradient(120deg, #0f6b4c, #1f55b8, #7a34b8, #0f6b4c); border-color: #4a90d0; }
+.cos-deg-aurora-av { background: linear-gradient(120deg, #1fa57c, #3a78e0, #9a58e0, #1fa57c); }
+.cos-deg-atardecer { background: linear-gradient(120deg, #8a3a14, #a8304e, #5a3a9a, #8a3a14); border-color: #e08a6a; }
+.cos-deg-atardecer-av { background: linear-gradient(120deg, #e07a30, #e0507a, #8a5ad0, #e07a30); }
+.cos-deg-oceano { background: linear-gradient(120deg, #0e6a7a, #1f48b0, #3a34a8, #0e6a7a); border-color: #4aa8c8; }
+.cos-deg-oceano-av { background: linear-gradient(120deg, #1fa8bc, #3a78e0, #5a50d8, #1fa8bc); }
+.cos-deg-bosque { background: linear-gradient(120deg, #2a6a14, #0e6a50, #5a6a14, #2a6a14); border-color: #6ab45a; }
+.cos-deg-bosque-av { background: linear-gradient(120deg, #4aa82a, #1fa882, #8aa828, #4aa82a); }
+
+/* Movimiento lento de los degradados (primer y ultimo color coinciden: sin saltos) */
+.cos-dorado, .cos-dorado-av, .cos-deg-aurora, .cos-deg-aurora-av, .cos-deg-atardecer, .cos-deg-atardecer-av,
+.cos-deg-oceano, .cos-deg-oceano-av, .cos-deg-bosque, .cos-deg-bosque-av {
+  background-size: 300% 300%;
+  animation: cos-flow 20s ease-in-out infinite alternate;
+}
+@keyframes cos-flow { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 
 /* Hojas modales y dialogos */
 .sheet { position: fixed; inset: 0; z-index: 50; display: none; }
