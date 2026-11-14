@@ -43,7 +43,7 @@ html.theme-profesor {
 
 /* ---------- Perfil ALUMNO ---------- */
 html.theme-alumno {
-  --root-size: 20px;          /* 1rem = 20px */
+  --root-size: 15px;          /* 1rem = 20px */
   --tap: 3.5rem;              /* zona tactil minima (70px) */
   --radius: 1rem;
   --radius-lg: 1.5rem;
