@@ -49,21 +49,21 @@ html.theme-alumno {
   --radius-lg: 1.5rem;
   --font-ui: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", sans-serif;
 
-  --c-page: 246 244 239;       /* crema suave, menos deslumbrante que el blanco */
-  --c-surface: 255 255 255;
-  --c-surface-alt: 236 233 225;
-  --c-line: 214 209 197;
-  --c-ink: 43 47 54;           /* gris carbon, no negro puro */
-  --c-ink-soft: 85 91 102;
-  --c-primary: 56 99 154;      /* azul sereno: unico acento */
-  --c-primary-soft: 226 235 246;
-  --c-on-primary: 255 255 255;
-  --c-success: 38 117 84;
-  --c-success-soft: 223 240 231;
-  --c-danger: 160 60 60;       /* casi no se usa en este perfil */
-  --c-danger-soft: 248 230 230;
-  --c-attention: 138 90 10;    /* avisos en ambar, nunca en rojo */
-  --c-attention-soft: 250 239 214;
+  --c-page: 10 12 16;            /* casi negro azulado, no negro puro (cansa menos) */
+  --c-surface: 24 27 33;
+  --c-surface-alt: 36 40 48;
+  --c-line: 58 64 74;
+  --c-ink: 232 234 238;          /* blanco roto, sin deslumbrar */
+  --c-ink-soft: 160 167 179;
+  --c-primary: 125 170 225;      /* azul claro: acento sereno sobre fondo oscuro */
+  --c-primary-soft: 30 45 66;
+  --c-on-primary: 10 16 26;      /* texto oscuro sobre botones azules */
+  --c-success: 110 200 150;
+  --c-success-soft: 22 48 37;
+  --c-danger: 235 135 135;
+  --c-danger-soft: 58 30 30;
+  --c-attention: 240 192 96;     /* ámbar, nunca rojo */
+  --c-attention-soft: 52 40 16;
 }
 
 /* ---------- Base ---------- */
