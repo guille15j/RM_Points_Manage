@@ -18,7 +18,7 @@
 
 /* ---------- Perfil PROFESOR ---------- */
 html.theme-profesor {
-  --root-size: 15px;          /* 1rem = 15px: todo el perfil escala desde aqui */
+  --root-size: 12px;          /* 1rem = 15px: todo el perfil escala desde aqui */
   --tap: 3rem;                /* zona tactil minima (45px) */
   --radius: 0.5rem;
   --radius-lg: 0.75rem;
