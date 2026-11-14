@@ -724,7 +724,7 @@
     clave: () => `
       <form data-tpv-form class="flex items-center gap-3 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
         <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
-        <input id="tpv-clave" type="password" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
+        <input id="tpv-clave" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
         <button type="submit" class="pressable h-tap px-5 rounded-ui bg-primary text-on-primary text-xl font-bold">Abrir</button>
         <button type="button" data-tpv-cancel aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft">${Icon('close', 'text-3xl')}</button>
       </form>`
@@ -743,7 +743,7 @@
   const ESTRELLAS_AVISO = {
     si: (list) => `
       <p class="inline-flex items-center gap-2 mb-4 text-lg text-ink-soft" aria-label="Estrellas recibidas">
-        <span class="text-primary">${Icon('star', 'text-2xl', true)} Estrellas Amables Recibidas: </span>
+        <span class="text-primary">${Icon('star', 'text-2xl', true)}</span>
         <span class="font-semibold text-ink">${list.slice(0, 6).map((e) => esc(e.de)).join(', ')}${list.length > 6 ? ` y ${list.length - 6} más` : ''}</span>
       </p>`,
     no: () => ''
@@ -1297,6 +1297,23 @@
     ev.preventDefault();
     abrirManual(($('#tpv-clave') || {}).value || '');
   });
+  // Degradados cosmeticos: onda de color del centro a los bordes (5 s por ciclo). Se apaga con "Reducir movimiento".
+  (function cosmeticAnim() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const root = document.documentElement;
+    const CICLO = 5000;
+    let last = 0;
+    function tick(t) {
+      if (!document.hidden && t - last >= 33) {                 // ~30 fotogramas por segundo
+        last = t;
+        const f = (t % CICLO) / CICLO;
+        root.style.setProperty('--r', (f * 9).toFixed(3) + 'rem');   // tarjetas (periodo 9rem)
+        root.style.setProperty('--ra', (f * 3).toFixed(3) + 'rem');  // avatares (periodo 3rem)
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
   // Contador de la estrella: solo cambia el texto (sin volver a pintar); al llegar a 0 se sincroniza
   let contadorAvisado = false;
   setInterval(() => {
