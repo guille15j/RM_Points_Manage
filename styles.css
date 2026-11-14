@@ -159,25 +159,25 @@ html.theme-alumno *:not([class*="cos-deg-"]):not([class*="cos-dorado"]), html.th
 .cos-lavanda-av { background: #5b4a8c; }
 .cos-menta { background: #1f3a2e; border-color: #3f7a62; }
 .cos-menta-av { background: #2f7a5a; }
-.cos-dorado { background: conic-gradient(from var(--ang), #5a4a10, #a8861c, #5a4a10, #c9a227); border-color: #c9a227; }
-.cos-dorado-av { background: conic-gradient(from var(--ang), #8a6e14, #e0b82e, #8a6e14, #f0cc4a); }
-.cos-deg-aurora { background: conic-gradient(from var(--ang), #0f6b4c, #1f55b8, #7a34b8, #0f6b4c); border-color: #4a90d0; }
-.cos-deg-aurora-av { background: conic-gradient(from var(--ang), #1fa57c, #3a78e0, #9a58e0, #1fa57c); }
-.cos-deg-atardecer { background: conic-gradient(from var(--ang), #8a3a14, #a8304e, #5a3a9a, #8a3a14); border-color: #e08a6a; }
-.cos-deg-atardecer-av { background: conic-gradient(from var(--ang), #e07a30, #e0507a, #8a5ad0, #e07a30); }
-.cos-deg-oceano { background: conic-gradient(from var(--ang), #0e6a7a, #1f48b0, #3a34a8, #0e6a7a); border-color: #4aa8c8; }
-.cos-deg-oceano-av { background: conic-gradient(from var(--ang), #1fa8bc, #3a78e0, #5a50d8, #1fa8bc); }
-.cos-deg-bosque { background: conic-gradient(from var(--ang), #2a6a14, #0e6a50, #5a6a14, #2a6a14); border-color: #6ab45a; }
-.cos-deg-bosque-av { background: conic-gradient(from var(--ang), #4aa82a, #1fa882, #8aa828, #4aa82a); }
+.cos-dorado { background: repeating-radial-gradient(circle at 50% 50%, #5a4a10 calc(var(--r) + 0.0rem), #a8861c calc(var(--r) + 2.25rem), #5a4a10 calc(var(--r) + 4.5rem), #c9a227 calc(var(--r) + 6.75rem), #5a4a10 calc(var(--r) + 9.0rem)); border-color: #c9a227; }
+.cos-dorado-av { background: repeating-radial-gradient(circle at 50% 50%, #8a6e14 calc(var(--r) + 0.0rem), #e0b82e calc(var(--r) + 0.75rem), #8a6e14 calc(var(--r) + 1.5rem), #f0cc4a calc(var(--r) + 2.25rem), #8a6e14 calc(var(--r) + 3.0rem)); }
+.cos-deg-aurora { background: repeating-radial-gradient(circle at 50% 50%, #0f6b4c calc(var(--r) + 0.0rem), #1f55b8 calc(var(--r) + 3.0rem), #7a34b8 calc(var(--r) + 6.0rem), #0f6b4c calc(var(--r) + 9.0rem)); border-color: #4a90d0; }
+.cos-deg-aurora-av { background: repeating-radial-gradient(circle at 50% 50%, #1fa57c calc(var(--r) + 0.0rem), #3a78e0 calc(var(--r) + 1.0rem), #9a58e0 calc(var(--r) + 2.0rem), #1fa57c calc(var(--r) + 3.0rem)); }
+.cos-deg-atardecer { background: repeating-radial-gradient(circle at 50% 50%, #8a3a14 calc(var(--r) + 0.0rem), #a8304e calc(var(--r) + 3.0rem), #5a3a9a calc(var(--r) + 6.0rem), #8a3a14 calc(var(--r) + 9.0rem)); border-color: #e08a6a; }
+.cos-deg-atardecer-av { background: repeating-radial-gradient(circle at 50% 50%, #e07a30 calc(var(--r) + 0.0rem), #e0507a calc(var(--r) + 1.0rem), #8a5ad0 calc(var(--r) + 2.0rem), #e07a30 calc(var(--r) + 3.0rem)); }
+.cos-deg-oceano { background: repeating-radial-gradient(circle at 50% 50%, #0e6a7a calc(var(--r) + 0.0rem), #1f48b0 calc(var(--r) + 3.0rem), #3a34a8 calc(var(--r) + 6.0rem), #0e6a7a calc(var(--r) + 9.0rem)); border-color: #4aa8c8; }
+.cos-deg-oceano-av { background: repeating-radial-gradient(circle at 50% 50%, #1fa8bc calc(var(--r) + 0.0rem), #3a78e0 calc(var(--r) + 1.0rem), #5a50d8 calc(var(--r) + 2.0rem), #1fa8bc calc(var(--r) + 3.0rem)); }
+.cos-deg-bosque { background: repeating-radial-gradient(circle at 50% 50%, #2a6a14 calc(var(--r) + 0.0rem), #0e6a50 calc(var(--r) + 3.0rem), #5a6a14 calc(var(--r) + 6.0rem), #2a6a14 calc(var(--r) + 9.0rem)); border-color: #6ab45a; }
+.cos-deg-bosque-av { background: repeating-radial-gradient(circle at 50% 50%, #4aa82a calc(var(--r) + 0.0rem), #1fa882 calc(var(--r) + 1.0rem), #8aa828 calc(var(--r) + 2.0rem), #4aa82a calc(var(--r) + 3.0rem)); }
 
-/* Remolino de color: el angulo del degradado conico gira (5 s por vuelta). Se apaga con "Reducir movimiento".
-   Primer y ultimo color coinciden: sin saltos. Sin soporte de @property queda estatico. */
-@property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-@keyframes cos-spin { to { --ang: 360deg; } }
-.cos-dorado, .cos-dorado-av, .cos-deg-aurora, .cos-deg-aurora-av, .cos-deg-atardecer, .cos-deg-atardecer-av,
-.cos-deg-oceano, .cos-deg-oceano-av, .cos-deg-bosque, .cos-deg-bosque-av {
-  animation: cos-spin 5s linear infinite;
-}
+/* Onda de color: nace en el centro y avanza hacia los bordes (5 s por ciclo). Se apaga con "Reducir movimiento".
+   El patron se repite cada 9rem (tarjetas) o 3rem (avatares) y el ciclo termina justo en el periodo: sin saltos.
+   Sin soporte de @property queda estatico. */
+@property --r { syntax: '<length>'; initial-value: 0rem; inherits: false; }
+@keyframes cos-out { to { --r: 9rem; } }
+@keyframes cos-out-av { to { --r: 3rem; } }
+.cos-dorado, .cos-deg-aurora, .cos-deg-atardecer, .cos-deg-oceano, .cos-deg-bosque { animation: cos-out 5s linear infinite; }
+.cos-dorado-av, .cos-deg-aurora-av, .cos-deg-atardecer-av, .cos-deg-oceano-av, .cos-deg-bosque-av { animation: cos-out-av 5s linear infinite; }
 
 /* Hojas modales y dialogos */
 .sheet { position: fixed; inset: 0; z-index: 50; display: none; }
