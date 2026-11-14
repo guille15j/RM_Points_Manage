@@ -151,22 +151,22 @@ html.theme-alumno *, html.theme-alumno *::before, html.theme-alumno *::after {
    .cos-<clave>      fondo suave de tarjeta o fila (con su borde)
    .cos-<clave>-av   version algo mas intensa para la burbuja del avatar y la muestra del editor
    Colores pastel y sin animaciones: el texto oscuro mantiene un contraste alto. */
-.cos-coral { background: #fde4dc; border-color: #f4b9a8; }
-.cos-coral-av { background: #f9c4b3; }
-.cos-lavanda { background: #ece6f8; border-color: #cdbfe9; }
-.cos-lavanda-av { background: #d9cdf1; }
-.cos-menta { background: #dff5ea; border-color: #b3e3cb; }
-.cos-menta-av { background: #bfead4; }
-.cos-dorado { background: linear-gradient(135deg, #fbf1cf, #f3dc8c); border-color: #e3c564; }
-.cos-dorado-av { background: linear-gradient(135deg, #f8e7a4, #eacb5c); }
-.cos-deg-aurora { background: linear-gradient(135deg, #d6f0e4 0%, #d9e6fb 55%, #eadbf6 100%); border-color: #bcd3ea; }
-.cos-deg-aurora-av { background: linear-gradient(135deg, #a9e0c8 0%, #a9c6f5 55%, #d2b5ee 100%); }
-.cos-deg-atardecer { background: linear-gradient(135deg, #fde3cf 0%, #fbd3dc 55%, #e6d5f2 100%); border-color: #efc3c3; }
-.cos-deg-atardecer-av { background: linear-gradient(135deg, #f9bd94 0%, #f6a9be 55%, #cfaee8 100%); }
-.cos-deg-oceano { background: linear-gradient(135deg, #d3f0f3 0%, #d3e3fa 55%, #d9dcf6 100%); border-color: #b5d2e6; }
-.cos-deg-oceano-av { background: linear-gradient(135deg, #8fd9e3 0%, #8fb8f0 55%, #a9a8e8 100%); }
-.cos-deg-bosque { background: linear-gradient(135deg, #dcefd3 0%, #cfeadf 55%, #d8e8c4 100%); border-color: #b4d6b0; }
-.cos-deg-bosque-av { background: linear-gradient(135deg, #a8dc92 0%, #86d2b4 55%, #c3dd8d 100%); }
+.cos-coral { background: #3b2520; border-color: #7a4a3c; }
+.cos-coral-av { background: #8a4a3a; }
+.cos-lavanda { background: #2c2740; border-color: #5a4f86; }
+.cos-lavanda-av { background: #5b4a8c; }
+.cos-menta { background: #1f3a2e; border-color: #3f7a62; }
+.cos-menta-av { background: #2f7a5a; }
+.cos-dorado { background: linear-gradient(135deg, #3d3414, #4d4116); border-color: #8a7424; }
+.cos-dorado-av { background: linear-gradient(135deg, #8a7222, #a88a2a); }
+.cos-deg-aurora { background: linear-gradient(135deg, #1d3a30 0%, #1f3050 55%, #382a50 100%); border-color: #3f5f80; }
+.cos-deg-aurora-av { background: linear-gradient(135deg, #2f7a60 0%, #3a5fa0 55%, #6a4aa0 100%); }
+.cos-deg-atardecer { background: linear-gradient(135deg, #4a2d22 0%, #4a2536 55%, #35294a 100%); border-color: #7a4a4a; }
+.cos-deg-atardecer-av { background: linear-gradient(135deg, #b0602a 0%, #b04a68 55%, #6a4a98 100%); }
+.cos-deg-oceano { background: linear-gradient(135deg, #1a3a42 0%, #1c3050 55%, #26284c 100%); border-color: #3a6a86; }
+.cos-deg-oceano-av { background: linear-gradient(135deg, #2a8a9a 0%, #3a68b0 55%, #4a48a8 100%); }
+.cos-deg-bosque { background: linear-gradient(135deg, #223d1c 0%, #1c3d33 55%, #2e3d18 100%); border-color: #4a7a44; }
+.cos-deg-bosque-av { background: linear-gradient(135deg, #4a8a2e 0%, #2a8a68 55%, #6a8a2a 100%); }
 
 /* Hojas modales y dialogos */
 .sheet { position: fixed; inset: 0; z-index: 50; display: none; }
@@ -184,3 +184,52 @@ html.theme-profesor .sheet-panel { animation: sheet-in .16s ease-out; }
 .has-dock { padding-bottom: calc(13.75rem + env(safe-area-inset-bottom)); }
 
 ::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Colores basicos en tema oscuro: tarjeta, borde, avatar, texto del avatar y muestra */
+html.theme-alumno .bg-sky-50 { background-color: #172a38; }
+html.theme-alumno .border-sky-200 { border-color: #2f5f80; }
+html.theme-alumno .bg-sky-100 { background-color: #1f3e54; }
+html.theme-alumno .text-sky-700 { color: #9fd0f0; }
+html.theme-alumno .bg-sky-300 { background-color: #3b82b8; }
+
+html.theme-alumno .bg-emerald-50 { background-color: #17301f; }
+html.theme-alumno .border-emerald-200 { border-color: #2f6b45; }
+html.theme-alumno .bg-emerald-100 { background-color: #1f4a30; }
+html.theme-alumno .text-emerald-700 { color: #9fe0b4; }
+html.theme-alumno .bg-emerald-300 { background-color: #3a9a5e; }
+
+html.theme-alumno .bg-teal-50 { background-color: #14302f; }
+html.theme-alumno .border-teal-200 { border-color: #2a6b68; }
+html.theme-alumno .bg-teal-100 { background-color: #1c4a47; }
+html.theme-alumno .text-teal-700 { color: #8fe0d8; }
+html.theme-alumno .bg-teal-300 { background-color: #34a095; }
+
+html.theme-alumno .bg-yellow-50 { background-color: #35300f; }
+html.theme-alumno .border-yellow-200 { border-color: #7a6c1c; }
+html.theme-alumno .bg-yellow-100 { background-color: #4a4214; }
+html.theme-alumno .text-yellow-700 { color: #f0dc7a; }
+html.theme-alumno .bg-yellow-300 { background-color: #b89a22; }
+
+html.theme-alumno .bg-orange-50 { background-color: #3a2612; }
+html.theme-alumno .border-orange-200 { border-color: #8a5420; }
+html.theme-alumno .bg-orange-100 { background-color: #4f3216; }
+html.theme-alumno .text-orange-700 { color: #f5b97a; }
+html.theme-alumno .bg-orange-300 { background-color: #c47a2e; }
+
+html.theme-alumno .bg-pink-50 { background-color: #3a1c2a; }
+html.theme-alumno .border-pink-200 { border-color: #85405e; }
+html.theme-alumno .bg-pink-100 { background-color: #4f2638; }
+html.theme-alumno .text-pink-700 { color: #f5a8c8; }
+html.theme-alumno .bg-pink-300 { background-color: #c05a86; }
+
+html.theme-alumno .bg-violet-50 { background-color: #281f3f; }
+html.theme-alumno .border-violet-200 { border-color: #5a4a8c; }
+html.theme-alumno .bg-violet-100 { background-color: #35295a; }
+html.theme-alumno .text-violet-700 { color: #c4b0f5; }
+html.theme-alumno .bg-violet-300 { background-color: #7a62c0; }
+
+html.theme-alumno .bg-stone-100 { background-color: #2a2824; }
+html.theme-alumno .border-stone-300 { border-color: #5a554c; }
+html.theme-alumno .bg-stone-200 { background-color: #3a3730; }
+html.theme-alumno .text-stone-700 { color: #d6d0c2; }
+html.theme-alumno .bg-stone-300 { background-color: #6a6458; }
