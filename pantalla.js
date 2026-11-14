@@ -1307,8 +1307,8 @@
       if (!document.hidden && t - last >= 33) {                 // ~30 fotogramas por segundo
         last = t;
         const f = (t % CICLO) / CICLO;
-        root.style.setProperty('--r', (f * 9).toFixed(3) + 'rem');   // tarjetas (periodo 9rem)
-        root.style.setProperty('--ra', (f * 3).toFixed(3) + 'rem');  // avatares (periodo 3rem)
+        root.style.setProperty('--r', (f * 18).toFixed(3) + 'rem');  // tarjetas (periodo 18rem)
+        root.style.setProperty('--ra', (f * 6).toFixed(3) + 'rem');   // avatares (periodo 6rem)
       }
       requestAnimationFrame(tick);
     }
