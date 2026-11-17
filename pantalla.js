@@ -151,30 +151,33 @@
     img.src = `mascota/etapa-${n}.${MASCOTA_EXT[next]}`;
   }, true);
   const etapaNombre = (etapa) => MASCOTA_ETAPAS[Math.max(0, Math.min(MASCOTA_ETAPAS.length - 1, etapa))];
-  let mascotaGrow = false;                            // al abrir: la mascota ha crecido desde la ultima vez
 
   /** Primera vez en este iPad: se toma la etapa actual como vista (sin celebrar nada). */
   function seenEtapa() {
     const m = S.mascota;
     let seen = store.get(SEEN_KEY, null);
     if (seen === null && m) { seen = m.etapa; store.set(SEEN_KEY, seen); }
+    if (m && seen > m.etapa) { seen = m.etapa; store.set(SEEN_KEY, seen); }   // reinicio: la mascota vuelve al huevo
     return seen === null ? 0 : seen;
   }
+  /** Etapa que se MUESTRA: la ultima que los ninos han visto evolucionar. Sube de una en una al hacer el ritual. */
+  const etapaVista = (m) => Math.min(m.etapa, seenEtapa());
+  const evoPendiente = (m) => !!m && m.etapa > seenEtapa();
 
   const FAB_STATES = {
     peligro: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: está en peligro" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-attention shadow-lg">
-        ${MascotaImg(m.etapa, 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-attention text-on-primary">${Icon('warning', 'text-xl', true)}</span>
       </button>`,
     nuevo: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
-        ${MascotaImg(m.etapa, 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-primary text-on-primary">${Icon('arrow_upward', 'text-xl', true)}</span>
       </button>`,
     normal: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}" class="pressable flex items-center justify-center w-24 h-24 rounded-full bg-surface border-2 border-line shadow-lg">
-        ${MascotaImg(m.etapa, 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
       </button>`,
     ninguno: () => ''
   };
@@ -185,7 +188,7 @@
   }
 
   const MASCOTA_GROW = {
-    si: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-primary-soft text-primary text-xl font-bold">${Icon('auto_awesome', 'text-2xl', true)}<span>${esc(m.nombre)} ha crecido</span></p>`,
+    si: (m) => `<button type="button" data-evolucionar class="pressable flex items-center justify-center gap-3 w-full h-tap px-4 rounded-ui bg-primary text-on-primary text-2xl font-bold">${Icon('auto_awesome', 'text-3xl', true)}<span>Evolucionar</span></button>`,
     no: () => ''
   };
   // Peligro: la mascota nunca retrocede; el profe decide si se reinicia. Tono tranquilo, sin dramatizar.
@@ -194,6 +197,7 @@
     no: () => ''
   };
   const MASCOTA_PROGRESS = {
+    pendiente: () => '',
     creciendo: (m) => `
       <div class="space-y-2">
         <div class="flex items-baseline justify-between gap-3">
@@ -308,25 +312,26 @@
     diario: (m) => bigBtn('diario', 'menu_book', 'Diario'),
     nada: () => ''
   };
-  const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1;
+  const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1 && !evoPendiente(m);
   const MASCOTA_VIEWS = {
     main: (m) => {
       // Etapas ya alcanzadas se ven; las que faltan son un misterio (unknown) aunque las imagenes esten subidas
+    const v = etapaVista(m);
     const steps = MASCOTA_ETAPAS.map((n, i) => `
-      <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === m.etapa ? 'aria-current="step"' : ''}>
-        ${i > m.etapa ? MascotaUnknown('w-14 h-14') : MascotaImg(i, 'w-14 h-14')}
-        <span class="text-sm ${i === m.etapa ? 'font-bold text-ink' : 'text-ink-soft'}">${i > m.etapa ? '?' : esc(n)}</span>
+      <li class="flex flex-col items-center gap-1 flex-1 min-w-0" ${i === v ? 'aria-current="step"' : ''}>
+        ${i > v ? MascotaUnknown('w-14 h-14') : MascotaImg(i, 'w-14 h-14')}
+        <span class="text-sm ${i === v ? 'font-bold text-ink' : 'text-ink-soft'}">${i > v ? '?' : esc(n)}</span>
       </li>`).join('');
       const hayDiario = !!(m.diario && m.diario.length);
       const acciones = resolve(MASCOTA_ACTIONS, puedeCuidar(m) ? 'cuidar' : 'cuidarNo', 'cuidarNo')(m) + resolve(MASCOTA_ACTIONS, m.diario && m.diario.length ? 'diario' : 'nada', 'nada')(m);
       return `${MASCOTA_HEAD(m, false)}
       <div class="space-y-5">
-        ${resolve(MASCOTA_GROW, mascotaGrow ? 'si' : 'no', 'no')(m)}
+        ${resolve(MASCOTA_GROW, evoPendiente(m) ? 'si' : 'no', 'no')(m)}
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
-        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(m.etapa, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(m.etapa), mascotaAnim && mascotaAnim.accion)}</div></div>
+        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(v, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(v), mascotaAnim && mascotaAnim.accion)}</div></div>
         <div class="grid gap-3 ${hayDiario ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
-        ${resolve(MASCOTA_PROGRESS, m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
+        ${resolve(MASCOTA_PROGRESS, evoPendiente(m) ? 'pendiente' : m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
         ${resolve(MASCOTA_VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m)}
         ${resolve(MASCOTA_PREMIO, m.premio ? 'si' : 'no', 'no')(m)}
       </div>`;
@@ -358,10 +363,8 @@
     const token = Date.now();
     mascotaAnim = { accion, token };
     mascotaView = 'main';
-    mascotaGrow = false;
     renderMascota();
     openSheet('sheet-mascota');
-    store.set(SEEN_KEY, S.mascota.etapa);
     renderMascotaFab();
     setTimeout(() => {
       if (mascotaAnim && mascotaAnim.token === token) {
@@ -375,10 +378,106 @@
     mascotaAnim = null;
     cuidaSel = '';
     mascotaView = 'main';
-    mascotaGrow = S.mascota.etapa > seenEtapa();
     renderMascota();
     openSheet('sheet-mascota');
-    store.set(SEEN_KEY, S.mascota.etapa);              // ya la han visto: el aviso del boton desaparece
+    renderMascotaFab();
+  }
+
+  /* ---- Ritual de evolucion (UNA implementacion para todas las etapas) ----
+   * evolucionar(desde, hasta) usa las imagenes mascota/etapa-N.* de ambas etapas y las combina con
+   * animaciones de la Web Animations API (no les afecta la regla de "sin animaciones CSS" del perfil alumno).
+   * Para cambiar el ritmo se toca EVO_FASES; sirve igual para 1->2, 2->3, 3->4 y 4->5.
+   * Con "Reducir movimiento" solo hay un fundido suave, sin balanceo ni destellos. */
+  const EVO_FASES = { reposo: 900, luz: 2600, cambio: 700, revelado: 1900 };   // ms
+  const EVO_DESTELLOS = [[8, 18], [86, 12], [12, 74], [84, 70], [50, 2], [0, 46], [96, 44]];   // % (x, y) alrededor
+  let evoSaltar = null;
+  const evoSinMovimiento = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  async function evolucionar(desde, hasta) {
+    const m = S.mascota;
+    const sinMov = evoSinMovimiento();
+    const activas = [];
+    let saltado = false;
+    const run = (el, kf, ms, opts) => {
+      const a = el.animate(kf, { duration: ms, fill: 'forwards', easing: 'ease-in-out', ...(opts || {}) });
+      activas.push(a);
+      if (saltado) a.finish();
+      return a.finished.catch(() => {});
+    };
+    const ov = document.createElement('div');
+    ov.id = 'evo';
+    ov.className = 'fixed inset-0 flex flex-col items-center justify-center gap-8 bg-page';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:80';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.setAttribute('aria-label', 'Evolución de ' + m.nombre);
+    ov.innerHTML = `
+      <button type="button" data-evo-skip aria-label="Omitir" class="pressable absolute top-6 right-6 flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft">${Icon('skip_next', 'text-3xl')}</button>
+      <div class="relative flex items-center justify-center w-80 h-80">
+        <div data-evo-halo class="absolute inset-0 rounded-full" style="opacity:0;background:radial-gradient(circle, rgb(var(--c-primary) / .6) 0%, rgb(var(--c-primary) / .28) 45%, transparent 72%)"></div>
+        <div class="absolute inset-0" data-evo-sparks></div>
+        <div class="relative w-72 h-72">
+          <div data-evo-old class="absolute inset-0 flex items-end justify-center" style="transform-origin:50% 100%">${MascotaImg(desde, 'w-72 h-72', '')}</div>
+          <div data-evo-new class="absolute inset-0 flex items-end justify-center" style="transform-origin:50% 100%;opacity:0">${MascotaImg(hasta, 'w-72 h-72', '')}</div>
+        </div>
+      </div>
+      <div class="min-h-[8rem] flex flex-col items-center gap-5">
+        <p data-evo-msg class="text-3xl font-bold text-center" style="opacity:0">${esc(m.nombre)} ha evolucionado: ${esc(etapaNombre(hasta))}</p>
+        <button type="button" data-evo-fin class="pressable h-tap px-8 rounded-ui bg-primary text-on-primary text-2xl font-bold" style="opacity:0;pointer-events:none">Continuar</button>
+      </div>`;
+    document.body.appendChild(ov);
+    const old = ov.querySelector('[data-evo-old]'), nuevo = ov.querySelector('[data-evo-new]');
+    const halo = ov.querySelector('[data-evo-halo]'), msg = ov.querySelector('[data-evo-msg]'), fin = ov.querySelector('[data-evo-fin]');
+    const sparks = ov.querySelector('[data-evo-sparks]');
+    evoSaltar = () => { saltado = true; activas.forEach((a) => { try { a.finish(); } catch (e) { /* ya terminada */ } }); };
+    const F = EVO_FASES;
+    const espera = (ms) => new Promise((ok) => { const id = setTimeout(ok, saltado ? 0 : ms); activas.push({ finish() { clearTimeout(id); ok(); } }); });
+    const BRILLO = 'brightness(2.1) saturate(.35)';
+
+    if (sinMov) {                                          // fundido suave, sin movimiento
+      await espera(600);
+      await Promise.all([run(old, [{ opacity: 1 }, { opacity: 0 }], 900), run(nuevo, [{ opacity: 0 }, { opacity: 1 }], 900)]);
+    } else {
+      await espera(F.reposo);                              // 1. reposo
+      const wob = [0, -2, 2, -3, 3, -4, 4, -3, 0].map((d, i, a) => ({ transform: `rotate(${d}deg)`, filter: `brightness(${1 + 1.1 * (i / (a.length - 1))}) saturate(${1 - 0.65 * (i / (a.length - 1))})` }));
+      await Promise.all([                                  // 2. balanceo + luz creciente
+        run(old, wob, F.luz, { easing: 'linear' }),
+        run(halo, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.1)' }], F.luz)
+      ]);
+      await Promise.all([                                  // 3. luz total: una etapa se convierte en la otra
+        run(old, [{ opacity: 1, filter: BRILLO }, { opacity: 0, filter: BRILLO }], F.cambio),
+        run(nuevo, [{ opacity: 0, filter: BRILLO }, { opacity: 1, filter: BRILLO }], F.cambio)
+      ]);
+      EVO_DESTELLOS.forEach(([x, y], i) => {               // 4. revelado: la luz se apaga y salen destellos
+        const s = document.createElement('div');
+        s.style.cssText = `position:absolute;left:${x}%;top:${y}%;width:18px;height:18px;opacity:0;background:linear-gradient(#fff,#fff) center/100% 4px no-repeat,linear-gradient(#fff,#fff) center/4px 100% no-repeat`;
+        sparks.appendChild(s);
+        run(s, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'scale(1)', offset: .5 }, { opacity: 0, transform: 'scale(.4)' }], F.revelado * 0.45, { delay: i * (F.revelado * 0.08) });
+      });
+      await Promise.all([
+        run(nuevo, [{ filter: BRILLO }, { filter: 'brightness(1) saturate(1)' }], F.revelado),
+        run(halo, [{ opacity: 1 }, { opacity: 0 }], F.revelado)
+      ]);
+    }
+    msg.style.opacity = 1; fin.style.opacity = 1; fin.style.pointerEvents = 'auto';
+    ov.querySelector('[data-evo-skip]').style.display = 'none';
+    fin.focus();
+    evoSaltar = null;
+  }
+
+  function iniciarEvolucion() {
+    const m = S.mascota;
+    if (!m || !evoPendiente(m) || document.getElementById('evo')) return;
+    const desde = seenEtapa();
+    evolucionar(desde, desde + 1);
+  }
+  function terminarEvolucion() {
+    const ov = document.getElementById('evo');
+    if (!ov) return;
+    store.set(SEEN_KEY, seenEtapa() + 1);                  // sube UNA etapa; si faltan mas, vuelve a aparecer el boton
+    ov.remove();
+    evoSaltar = null;
+    renderMascota();
     renderMascotaFab();
   }
 
@@ -1248,6 +1347,9 @@
   // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
   const CLICK_HANDLERS = [
     ['[data-open-mascota]', () => openMascota()],
+    ['[data-evolucionar]', () => iniciarEvolucion()],
+    ['[data-evo-skip]', () => { if (evoSaltar) evoSaltar(); }],
+    ['[data-evo-fin]', () => terminarEvolucion()],
     ['[data-mascota-view]', (el) => { mascotaView = el.dataset.mascotaView; if (mascotaView !== 'cuidar') cuidaSel = ''; renderMascota(); const b = $('#mascota-body'); if (b) b.scrollTop = 0; }],
     ['[data-cuida-al]', (el) => { cuidaSel = el.dataset.cuidaAl; renderMascota(); }],
     ['[data-cuida-cambiar]', () => { cuidaSel = ''; renderMascota(); }],
