@@ -12,10 +12,10 @@
  *     Se anade al CARRITO (buffer local en localStorage). Nada va aun al servidor.
  *  3. Abre el carrito, revisa / edita / elimina movimientos y pulsa ENVIAR.
  *  4. Envio transaccional:
- *        - SNAPSHOT del estado local (alumnos + carrito).
- *        - Actualizacion optimista (puntos y carrito vacio al instante).
- *        - Si el servidor falla: ROLLBACK al snapshot y aviso para reintentar.
- *        - El batchId es idempotente: reintentar nunca duplica movimientos en el ledger.
+ *       - SNAPSHOT del estado local (alumnos + carrito).
+ *       - Actualizacion optimista (puntos y carrito vacio al instante).
+ *       - Si el servidor falla: ROLLBACK al snapshot y aviso para reintentar.
+ *       - El batchId es idempotente: reintentar nunca duplica movimientos en el ledger.
  *
  * Estructura: 1. Estado  2. Calculo  3. Componentes (con sus mapas)  4. Render
  *             5. Acciones  6. Envio  7. Sincronizacion  8. Eventos
@@ -30,25 +30,26 @@
   const KEY = 'tp_prof_v3';
   const saved = store.get(KEY, {});
   const S = {
-    alumnos: saved.alumnos || [],    // [{id,nombre,avatar,color,puntos,racha,insignias,pendientes}] confirmado por el servidor
-    reglas: saved.reglas || [],      // motivos frecuentes (pestana ReglasYPremios)
+    alumnos: saved.alumnos || [],   // [{id,nombre,avatar,color,puntos,racha,insignias,pendientes}] confirmado por el servidor
+    reglas: saved.reglas || [],     // motivos frecuentes (pestana ReglasYPremios)
     insignias: saved.insignias || [],
     config: saved.config || { ruletaBonus: [] },
     mascota: saved.mascota || null,
     estrellas: saved.estrellas || [],
     ayudante: saved.ayudante || null,
-    uso: saved.uso || {},            // veces que se ha usado cada motivo (ordena los favoritos del dock)
-    cart: saved.cart || [],          // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
+    uso: saved.uso || {},           // veces que se ha usado cada motivo (ordena los favoritos del dock)
+    uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
+    cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
     pending: saved.pending || null, // {id,sig}: batchId del ultimo intento, para reintentos idempotentes
     status: isDemo() ? 'demo' : 'off',
     banner: null                    // mensaje de error visible, o null
   };
-  const selected = new Set();        // seleccion efimera
+  const selected = new Set();       // seleccion efimera
   let sending = false;
-  let edit = null;                   // movimiento en edicion: {id, sign, value}
+  let edit = null;                  // movimiento en edicion: {id, sign, value}
   let wheel = { phase: 'idle', pool: [], name: '', winner: null, bonus: 0 }; // ruleta
   let wheelTimer = null;
-  let mtab = 'suma';                 // pestana de la hoja de motivos
+  let mtab = 'suma';                // pestana de la hoja de motivos
 
   const $ = (s) => document.querySelector(s);
   // Copia automatica del carrito en la hoja "Carrito" (para el envio de las 21:00 aunque la web este cerrada)
@@ -78,7 +79,7 @@
   function scheduleCartSync() {
     if (isDemo() || sending || cartSig() === cartSyncSig) return;
     clearTimeout(cartSyncTimer);
-    cartSyncTimer = setTimeout(syncCart, 1500);              // espera a que el profesor termine de tocar
+    cartSyncTimer = setTimeout(syncCart, 1500);                // espera a que el profesor termine de tocar
   }
   /** Sube el carrito a la hoja en segundo plano. No bloquea nada: el carrito local sigue siendo la fuente inmediata. */
   async function syncCart() {
@@ -86,35 +87,25 @@
     const sig = cartSig();
     const items = S.cart.slice();
     let batchId = 'vacio';
-    if (items.length) {                                     // mismo batchId que usara el envio manual: nunca se duplica
+    if (items.length) {                                         // mismo batchId que usara el envio manual: nunca se duplica
       const bs = batchSig();
       batchId = S.pending && S.pending.sig === bs ? S.pending.id : uid();
       S.pending = { id: batchId, sig: bs };
       saveLocal();
     }
     const movimientos = items.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
-    
-    // Capturamos el icono de sincronización (ajusta el selector si tu icono tiene otra clase o ID)
-    const syncIcon = document.querySelector('.icon-sync, [data-sync-icon], .material-symbols-rounded'); 
-    if (syncIcon) syncIcon.classList.add('animate-spin');
-
     cartSyncInflight = apiPost({ action: 'carrito_guardar', batchId, movimientos, ids: items.map((c) => c.id) });
     try {
       const res = await cartSyncInflight;
       cartSyncSig = sig;
       aplicarCarritoAuto(res.carritoAuto);
-      
-      // Al recibir la actualización del servidor, mostramos el toast
-      toast('Actualización recibida del servidor', 'ok');
     } catch (e) {
       console.warn('Copia del carrito pendiente:', e.message);
       clearTimeout(cartSyncTimer);
       cartSyncTimer = setTimeout(scheduleCartSync, 15000);      // sin conexion: se reintenta
     } finally {
       cartSyncInflight = null;
-      // Quitamos la animación de giro al terminar
-      if (syncIcon) syncIcon.classList.remove('animate-spin');
-      scheduleCartSync();                                    // por si cambio mientras se subia
+      scheduleCartSync();                                       // por si cambio mientras se subia
     }
   }
   const findInsignia = (id) => S.insignias.find((i) => i.id === id);
@@ -212,6 +203,7 @@
     yes: (mov) => IconButton({ icon: 'edit', label: 'Editar movimiento', attrs: `data-edit="${esc(mov.id)}"` }),
     no: () => ''
   };
+  // Segunda linea de la fila: saldo antes -> despues, o el nombre de la insignia
   const CART_DETAILS = {
     saldo: ({ before, after, mov }) => `<p class="flex items-center gap-1 text-sm tabular-nums text-ink-soft">${before}${Icon('arrow_forward', 'text-base')}<span class="font-semibold text-ink">${after}</span>${renderNote(mov.nota ? ' · ' + mov.nota : '', 'truncate')}</p>`,
     insignia: ({ mov }) => `<p class="text-sm text-ink-soft truncate">${esc(mov.nota || 'Insignia')}</p>`
@@ -357,6 +349,7 @@
   };
   const getMotiveSheetKind = () => (!S.reglas.length ? 'vacio' : selected.size ? 'lista' : 'sinSeleccion');
 
+
   /* ---- Ruleta: fases ---- */
   const wheelBonuses = () => (S.config.ruletaBonus && S.config.ruletaBonus.length ? S.config.ruletaBonus : [10]);
   const wheelPool = () => (selected.size ? S.alumnos.filter((a) => selected.has(a.id)) : S.alumnos);
@@ -463,8 +456,9 @@
   }
 
   /* ======================= CLASE: mascota, ayudante de turno, estrellas ======================= */
-  let confirmReset = false;         // "Reiniciar" pide una segunda pulsacion
+  let confirmReset = false;          // "Reiniciar" pide una segunda pulsacion
 
+  // Todo lo de esta hoja va al CARRITO y se envia en el mismo lote que los puntos.
   const enCarrito = {
     rol: () => S.cart.some((c) => c.tipo === 'rol'),
     est: (id) => S.cart.some((c) => c.tipo === 'estrella_res' && c.ref === id),
@@ -472,6 +466,7 @@
   };
   const pendientesEstrellas = () => (S.estrellas || []).filter((e) => !enCarrito.est(e.id));
 
+  // Punto rojo en el boton: hay algo que revisar (estrellas) o la mascota esta en peligro
   const CLASE_DOT = { si: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.remove('hidden')), no: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.add('hidden')) };
   const hayAviso = () => pendientesEstrellas().length > 0 || !!(S.mascota && S.mascota.peligro);
   const renderClaseDot = () => resolve(CLASE_DOT, hayAviso() ? 'si' : 'no', 'no')();
@@ -549,29 +544,369 @@
   const VOTACION = {
     abierta: (v) => `
       <section class="space-y-2">
-        <h3 class="flex items-center gap-2 font-semibold">${Icon('how_to_vote', 'text-xl')}Votación abierta</h3>
-        <p class="text-ink-soft">${esc(v.pregunta)}</p>
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('how_to_vote', 'text-xl')}Nombre de la mascota</h3>
+        <p class="text-ink-soft">Han votado ${v.votantes} de ${v.total}.</p>
+        <ul class="text-sm space-y-0.5">${Object.keys(v.votos).map((o) => `<li class="flex justify-between"><span>${esc(o)}</span><span class="tabular-nums font-semibold">${v.votos[o]}</span></li>`).join('')}</ul>
+        ${enCarrito.masc('cerrar_nombre') ? queuedNote('Cierre en el carrito. Se aplicará al enviar.') : `<button type="button" data-cerrar-nombre class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('lock', 'text-xl')}Cerrar votación</button>`}
       </section>`,
-    cerrada: () => ''
+    otro: () => ''
   };
-
+  const MASCOTA_SECTION = {
+    si: (m) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('pets', 'text-xl')}${esc(m.nombre)}</h3>
+        <p class="text-ink-soft">Etapa ${m.etapa + 1} de ${m.etapas} · ${m.puntos} puntos${m.maxima ? ' · máxima' : ''}</p>
+        ${resolve(PELIGRO, m.peligro ? 'si' : 'no', 'no')(m)}
+        ${resolve(RESET_BTN, enCarrito.masc('reiniciar') ? 'enCarrito' : confirmReset ? 'pide' : 'normal', 'normal')()}
+      </section>
+      ${resolve(VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m.votacion)}`,
+    no: () => `<p class="text-ink-soft">La mascota está desactivada (mascota_activa en Config).</p>`
+  };
   function renderClase() {
-    const el = $('#clase-body');
-    if (!el) return;
-    const ay = S.ayudante;
-    const ests = pendientesEstrellas();
-    const vot = S.votacion;
-    el.innerHTML = `
-      <div class="space-y-6">
-        ${resolve(AYUDANTE, ay ? 'si' : 'no', 'no')(ay, S.config.ayudantePuntos || 5)}
-        ${resolve(ESTRELLAS, ests.length ? 'lleno' : 'vacio', 'vacio')(ests, S.config.estrellaPuntos || 2)}
-        ${S.mascota ? `
-          <section class="space-y-2">
-            <h3 class="flex items-center gap-2 font-semibold">${Icon('pets', 'text-xl')}Mascota (${esc(S.mascota.nombre)})</h3>
-            ${resolve(PELIGRO, S.mascota.peligro ? 'si' : 'no', 'no')(S.mascota)}
-            ${resolve(RESET_BTN, enCarrito.masc('reset') ? 'enCarrito' : confirmReset ? 'pide' : 'normal', 'normal')()}
-          </section>` : ''}
-        ${resolve(VOTACION, vot && vot.abierta ? 'abierta' : 'cerrada', 'cerrada')(vot)}
-      </div>`;
+    const pts = (S.config && S.config.ayudantePuntos) || 2;
+    const ept = (S.config && S.config.estrellaPuntos) || 2;
+    const est = S.estrellas || [];
+    $('#clase-body').innerHTML =
+      resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
+      resolve(ESTRELLAS, est.length ? 'lleno' : 'vacio', 'vacio')(est, ept) +
+      resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota);
   }
+  function openClase() {
+    confirmReset = false;
+    renderClase();
+    openSheet('sheet-clase');
+  }
+  function estrellaCarrito(id, ok) {
+    const e = (S.estrellas || []).find((x) => x.id === id);
+    if (!e || enCarrito.est(id)) return;
+    queueClase({ tipo: 'estrella_res', alumnoId: e.para, ref: id, ok, delta: ok ? ((S.config && S.config.estrellaPuntos) || 2) : 0,
+      nota: (ok ? 'Estrella aprobada: ' : 'Estrella rechazada: ') + e.frase }, 'Añadido al carrito');
+  }
+  /** Anade una accion de clase al carrito (sin red): se envia con el resto en un unico lote. */
+  function queueClase(mov, msg) {
+    if (sending) return;
+    S.cart.push(Object.assign({ id: uid(), delta: 0, nota: '', ref: '' }, mov));
+    confirmReset = false;
+    persist();
+    render();
+    toast(msg, 'ok');
+  }
+
+  /* ======================= 5. ACCIONES ======================= */
+  function toggleStudent(id) {
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    haptic();
+    renderList();
+  }
+
+  function addMov(m, ids, keep) {
+    if (sending) return false;
+    const targets = ids || [...selected];
+    if (!targets.length) {
+      toast('Primero toca a uno o más alumnos', 'err');
+      return false;
+    }
+    targets.forEach((id) => S.cart.push({ id: uid(), alumnoId: id, tipo: m.tipo, delta: m.tipo === 'reset' || m.tipo === 'insignia' ? 0 : m.delta, nota: m.nota || '', ref: m.ref || '' }));
+    if (!ids && !keep) selected.clear();
+    persist();
+    render();
+    haptic();
+    return targets.length;
+  }
+
+  const ADD_MESSAGES = {
+    reset: (m, n) => `A cero añadido (${n})`,
+    insignia: (m, n) => `Insignia añadida (${n})`,
+    ruleta: (m, n) => `Ruleta: ${fmt(m.delta)} añadido al carrito`,
+    delta: (m, n) => `${m.nota ? m.nota + ' ' : ''}${fmt(m.delta)} añadido al carrito (${n})`
+  };
+  function addWithToast(m, ids, keep) {
+    const n = addMov(m, ids, keep);
+    if (n) toast(resolve(ADD_MESSAGES, m.tipo, 'delta')(m, n), 'ok');
+    return n;
+  }
+
+  function quick(value) {
+    value === 'reset' ? addWithToast({ tipo: 'reset' }) : addWithToast({ tipo: 'delta', delta: parseInt(value, 10) });
+  }
+
+  function addMotivo(id, fromSheet) {
+    const r = S.reglas.find((x) => x.id === id);
+    if (!r) return;
+    const n = addWithToast({ tipo: 'delta', delta: r.puntos, nota: r.nombre }, null, fromSheet);
+    if (n) { S.uso[id] = (S.uso[id] || 0) + 1; persist(); renderMotives(); }
+  }
+  function openMotives() {
+    mtab = S.reglas.some((r) => r.puntos >= 0) ? 'suma' : 'resta';
+    renderMotiveSheet();
+    openSheet('sheet-motives');
+  }
+  function closeMotives() {
+    selected.clear();
+    closeSheet('sheet-motives');
+    renderList();
+  }
+
+  /* ---- Insignias ---- */
+  function renderBadgeSheet() {
+    const kind = getBadgeSheetKind();
+    $('#badge-body').innerHTML = resolve(BADGE_SHEET, kind, 'vacio')(selected.size);
+  }
+  function openBadges() {
+    renderBadgeSheet();
+    openSheet('sheet-badge');
+  }
+  function addInsignia(id) {
+    const ins = findInsignia(id);
+    if (!ins) return;
+    // Solo se evita repetirla dentro del mismo carrito; si ya la tiene, se renueva el plazo
+    const ids = [...selected].filter((aid) => findAlumno(aid) && !S.cart.some((m) => m.tipo === 'insignia' && m.ref === id && m.alumnoId === aid));
+    closeSheet('sheet-badge');
+    if (!ids.length) return toast('Esa insignia ya está en el carrito', 'info');
+    selected.clear();
+    addWithToast({ tipo: 'insignia', nota: ins.nombre, ref: id }, ids);
+  }
+
+  /* ---- Ruleta ---- */
+  function renderWheel() {
+    $('#wheel-body').innerHTML = resolve(WHEEL_PHASES, getWheelPhase(), 'idle')();
+  }
+  function openWheel() {
+    clearInterval(wheelTimer);
+    wheel = { phase: 'idle', name: '', winner: null, bonus: 0 };
+    renderWheel();
+    openSheet('sheet-wheel');
+  }
+  function spinWheel() {
+    const pool = wheelPool();
+    if (!pool.length || wheel.phase === 'spinning') return;
+    const winner = pool[randInt(pool.length)];
+    const bonuses = wheelBonuses();
+    const bonus = bonuses[randInt(bonuses.length)];
+    wheel = { phase: 'spinning', name: pool[randInt(pool.length)].nombre, winner, bonus };
+    renderWheel();
+    let ticks = 0;
+    clearInterval(wheelTimer);
+    wheelTimer = setInterval(() => {
+      ticks++;
+      if (ticks >= 22) {
+        clearInterval(wheelTimer);
+        wheel.phase = 'result';
+      } else {
+        wheel.name = pool[randInt(pool.length)].nombre;
+      }
+      renderWheel();
+    }, 100);
+  }
+  function wheelToCart() {
+    if (wheel.phase !== 'result' || !wheel.winner) return;
+    const w = wheel.winner;
+    const b = wheel.bonus;
+    closeSheet('sheet-wheel');
+    wheel.phase = 'idle';
+    addWithToast({ tipo: 'ruleta', delta: b, nota: 'Ruleta' }, [w.id]);
+  }
+
+  function customAmount(sign) {
+    const inp = $('#custom');
+    const v = parseInt(inp.value, 10);
+    if (!v || v < 1) return toast('Escribe un número mayor que 0', 'err');
+    if (v > 10000) return toast('Valor demasiado grande', 'err');
+    if (!selected.size) return toast('Primero toca a uno o más alumnos', 'err');
+    addWithToast({ tipo: 'delta', delta: sign * v });
+    inp.value = '';
+    inp.blur();
+  }
+
+  function openEdit(id) {
+    const mov = findMov(id);
+    if (!mov) return;
+    edit = { id, sign: mov.delta < 0 ? -1 : 1, value: Math.abs(mov.delta) };
+    renderEdit();
+    openSheet('sheet-edit');
+  }
+
+  function setEditSign(key) {
+    const input = $('#edit-value');
+    if (input) edit.value = input.value; // conserva lo escrito al cambiar de signo
+    edit.sign = key === 'plus' ? 1 : -1;
+    renderEdit();
+  }
+
+  function saveEdit() {
+    const mov = findMov(edit.id);
+    const v = parseInt($('#edit-value').value, 10);
+    if (!mov || !v || v < 1 || v > 10000) return toast('Valor no válido', 'err');
+    mov.delta = edit.sign * v;
+    persist();
+    closeSheet('sheet-edit');
+    render();
+  }
+
+  function deleteMov(id) {
+    if (sending) return;
+    S.cart = S.cart.filter((m) => m.id !== id);
+    persist();
+    closeSheet('sheet-edit');
+    render();
+  }
+
+  function clearCart() {
+    if (!S.cart.length || sending) return;
+    if (confirm('¿Vaciar todo el carrito?')) {
+      S.cart = [];
+      persist();
+      render();
+    }
+  }
+
+  async function resetDemoData() {
+    resetDemo();
+    S.cart = [];
+    S.pending = null;
+    selected.clear();
+    persist();
+    await refresh(true);
+    render();
+  }
+
+  /* ======================= 6. ENVIO TRANSACCIONAL ======================= */
+  async function sendCart() {
+    if (sending || !S.cart.length) return;
+    sending = true;
+    S.banner = null;
+    clearTimeout(cartSyncTimer);
+    if (cartSyncInflight) { try { await cartSyncInflight; } catch (e) { /* da igual: se envia igualmente */ } }   // evita que una copia vieja llegue despues
+
+    // 1) SNAPSHOT del estado anterior (para el rollback)
+    const snapshot = clone({ alumnos: S.alumnos, cart: S.cart });
+
+    // 2) batchId idempotente: si reintentamos el MISMO carrito, reutilizamos el id
+    const sig = batchSig();
+    const ids = S.cart.map((c) => c.id);
+    const batchId = S.pending && S.pending.sig === sig ? S.pending.id : uid();
+    S.pending = { id: batchId, sig };
+
+    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
+
+    // 3) Actualizacion OPTIMISTA: aplicamos saldos y vaciamos el carrito al instante
+    const sim = simulate();
+    S.alumnos.forEach((a) => (a.puntos = sim[a.id].now));
+    S.cart.forEach((c) => {
+      const a = findAlumno(c.alumnoId);
+      if (a && c.tipo === 'insignia' && !(a.insignias || []).includes(c.ref)) a.insignias = (a.insignias || []).concat(c.ref);
+    });
+    S.cart = [];
+    persist();
+    closeSheet('sheet-cart');
+    render();
+
+    try {
+      // 4) Envio al ledger (Google Apps Script)
+      const res = await apiPost({ action: 'batch', batchId, movimientos, ids });
+      applyServer(res); // la verdad del servidor
+      S.pending = null;
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      const n = movimientos.length;
+      const bonos = res.bonificaciones || [];
+      const extra = bonos.length ? '. Racha: ' + bonos.map((b) => `${(findAlumno(b.alumnoId) || { nombre: '' }).nombre} +${b.bonus}`).join(', ') : '';
+      toast(`${n} ${n === 1 ? 'movimiento enviado' : 'movimientos enviados'}${extra}`, 'ok');
+    } catch (err) {
+      // 5) ROLLBACK: restauramos estado local e interfaz al snapshot anterior
+      console.error('Envio fallido:', err);
+      S.alumnos = snapshot.alumnos;
+      S.cart = snapshot.cart;
+      persist(); // S.pending se conserva para reintentar de forma idempotente
+      setStatus('off');
+      S.banner = `No se pudo enviar (${err.message}). El carrito se ha restaurado: revisa la conexión y vuelve a pulsar Enviar.`;
+    } finally {
+      sending = false;
+      render();
+      scheduleCartSync();
+    }
+  }
+
+  /* ======================= 7. SINCRONIZACION ======================= */
+  async function refresh(manual) {
+    if (sending) return;
+    try {
+      const r = await apiGet();
+      const changed = JSON.stringify(pickState(r)) !== JSON.stringify(pickState(S));
+      applyServer(r);
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      if (changed) render();
+      if (manual) toast('Actualizado', 'info');
+    } catch (e) {
+      console.error('No se pudo actualizar:', e);
+      setStatus('off');
+      if (manual) toast('Sin conexión: se muestran los últimos datos guardados', 'err');
+    }
+  }
+
+  /* ======================= 8. EVENTOS ======================= */
+  // Lista [selector, accion]. Se evalua en orden; la primera coincidencia gana.
+  const CLICK_HANDLERS = [
+    ['[data-rol]', (el) => {
+      const conf = el.dataset.rol === 'confirmar';
+      if (!S.ayudante || enCarrito.rol()) return;
+      queueClase({ tipo: 'rol', alumnoId: S.ayudante.id, accion: el.dataset.rol, ref: el.dataset.rol, delta: conf ? ((S.config && S.config.ayudantePuntos) || 2) : 0,
+        nota: conf ? 'Ayudante de turno: hecho' : 'Ayudante de turno: pasa al siguiente' }, 'Añadido al carrito');
+    }],
+    ['[data-tpv]', (el) => tpvToggle(el.dataset.tpv, el.dataset.to)],
+    ['[data-est-undo]', (el) => { S.cart = S.cart.filter((c) => !(c.tipo === 'estrella_res' && c.ref === el.dataset.estUndo)); persist(); render(); renderClase(); }],
+    ['[data-est-ok]', (el) => estrellaCarrito(el.dataset.estOk, true)],
+    ['[data-est-no]', (el) => estrellaCarrito(el.dataset.estNo, false)],
+    ['[data-cerrar-nombre]', () => { if (!enCarrito.masc('cerrar_nombre')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'cerrar_nombre', nota: 'Cerrar la votación del nombre' }, 'Añadido al carrito'); }],
+    ['[data-reset-ask]', () => { confirmReset = true; renderClase(); }],
+    ['[data-reset-cancel]', () => { confirmReset = false; renderClase(); }],
+    ['[data-reset-ok]', () => { if (!enCarrito.masc('reiniciar')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'reiniciar', nota: 'Reiniciar la mascota desde el huevo' }, 'Añadido al carrito'); }],
+    ['#btn-mas', () => openSheet('sheet-mas')],
+    ['#btn-clase', () => { closeSheet('sheet-mas'); openClase(); }],
+    ['[data-del]', (el) => deleteMov(el.dataset.del)],
+    ['[data-edit]', (el) => openEdit(el.dataset.edit)],
+    ['[data-remove]', () => deleteMov(edit.id)],
+    ['[data-save]', () => saveEdit()],
+    ['[data-sign]', (el) => setEditSign(el.dataset.sign)],
+    ['[data-close]', (el) => closeSheet(el.dataset.close)],
+    ['[data-banner-close]', () => { S.banner = null; renderBanner(); }],
+    ['[data-demo-reset]', () => resetDemoData()],
+    ['[data-al]', (el) => toggleStudent(el.dataset.al)],
+    ['[data-motivos-open]', () => openMotives()],
+    ['[data-motivos-done]', () => closeMotives()],
+    ['[data-mtab]', (el) => { mtab = el.dataset.mtab; renderMotiveSheet(); }],
+    ['[data-motivo]', (el) => addMotivo(el.dataset.motivo, !!el.dataset.sheet)],
+    ['[data-ins]', (el) => addInsignia(el.dataset.ins)],
+    ['[data-spin]', () => spinWheel()],
+    ['[data-wheel-add]', () => wheelToCart()],
+    ['#btn-badge', () => { closeSheet('sheet-mas'); openBadges(); }],
+    ['[data-q]', (el) => { closeSheet('sheet-mas'); quick(el.dataset.q); }],
+    ['#custom-add', () => customAmount(1)],
+    ['#custom-sub', () => customAmount(-1)],
+    ['#sel-all', () => { S.alumnos.forEach((a) => selected.add(a.id)); renderList(); }],
+    ['#sel-none', () => { selected.clear(); renderList(); }],
+    ['#btn-refresh', () => refresh(true)],
+    ['#btn-cart', () => { renderCart(); openSheet('sheet-cart'); }],
+    ['#cart-send', () => sendCart()],
+    ['#cart-clear', () => clearCart()]
+  ];
+  document.addEventListener('click', (e) => {
+    for (const [selector, action] of CLICK_HANDLERS) {
+      const el = e.target.closest(selector);
+      if (el) return action(el);
+    }
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'demo-fail') store.set('demo_fail', e.target.checked);
+  });
+
+  // Refresco al volver a la pestana y cada cierto tiempo (nunca mientras se envia)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
+  setInterval(() => { if (!document.hidden && !sending) refresh(false); }, Math.max(CFG.POLL_MS || 15000, 20000));
+
+  // Arranque: pinta lo guardado al instante y sincroniza en segundo plano
+  setStatus(S.status);
+  render();
+  refresh(false);
 })();
