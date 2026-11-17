@@ -237,3 +237,12 @@ html.theme-alumno .border-stone-300 { border-color: #5a554c; }
 html.theme-alumno .bg-stone-200 { background-color: #3a3730; }
 html.theme-alumno .text-stone-700 { color: #d6d0c2; }
 html.theme-alumno .bg-stone-300 { background-color: #6a6458; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
