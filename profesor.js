@@ -83,6 +83,7 @@
   }
   /** Sube el carrito a la hoja en segundo plano. No bloquea nada: el carrito local sigue siendo la fuente inmediata. */
   async function syncCart() {
+    syncIcon.classList.add('animate-spin');
     if (isDemo() || sending) return;
     const sig = cartSig();
     const items = S.cart.slice();
@@ -838,9 +839,11 @@
       setStatus(isDemo() ? 'demo' : 'ok');
       if (changed) render();
       if (manual) toast('Actualizado', 'info');
+      syncIcon.classList.remove('animate-spin');
     } catch (e) {
       console.error('No se pudo actualizar:', e);
       setStatus('off');
+      syncIcon.classList.remove('animate-spin');
       if (manual) toast('Sin conexión: se muestran los últimos datos guardados', 'err');
     }
   }
