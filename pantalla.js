@@ -395,10 +395,19 @@
   const SonidoBtn = (cls) => `<button type="button" data-evo-sound aria-label="Sonido" aria-pressed="${sonidoOn()}" class="pressable flex items-center justify-center w-tap h-tap shrink-0 rounded-ui ${cls}">${Icon(sonidoOn() ? 'volume_up' : 'volume_off', 'text-3xl')}</button>`;
   let audioCtx = null;
   function audio() {
+    // iPadOS: sin esto el interruptor de silencio (o el modo silencio) mutea el Web Audio
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* no soportado */ }
     if (!audioCtx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; audioCtx = new C(); }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx.state !== 'running') audioCtx.resume();
     return audioCtx;
   }
+  /** iOS solo deja sonar tras un toque: el primer toque en la pantalla desbloquea el audio con un buffer silencioso. */
+  const desbloquearAudio = () => {
+    const ctx = audio();
+    if (ctx) { const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, 22050); s.connect(ctx.destination); s.start(0); }
+  };
+  document.addEventListener('pointerdown', () => { if (sonidoOn()) desbloquearAudio(); }, { once: false, passive: true });
+  const GANANCIA = 3.5;                                    // los volumenes de abajo son relativos; el altavoz del iPad es flojo
   const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
   const PENTA = [0, 2, 4, 7, 9];
   /** Programa toda la secuencia (alineada con EVO_FASES) y devuelve {parar, final}. */
@@ -406,15 +415,16 @@
     const ctx = audio();
     if (!ctx) return null;
     const master = ctx.createGain();
-    master.gain.value = 0.55;
-    master.connect(ctx.destination);
+    master.gain.value = 1;
+    const comp = ctx.createDynamicsCompressor();           // evita saturar cuando suenan varias notas a la vez
+    master.connect(comp); comp.connect(ctx.destination);
     const t0 = ctx.currentTime + 0.05;
     const nota = (n, t, dur, tipo, vol, hasta) => {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = tipo; o.frequency.setValueAtTime(midi(n), t);
       if (hasta) o.frequency.exponentialRampToValueAtTime(midi(hasta), t + dur);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(Math.min(0.5, vol * GANANCIA), t + 0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
     };
@@ -442,7 +452,7 @@
     EVO_DESTELLOS.forEach((_, k) => nota(96 + (k % 3) * 3, rev0 + 0.25 + k * (F.revelado / 1000) * 0.08, 0.18, 'sine', 0.03));
     let cortado = false;
     const parar = () => { cortado = true; master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(0, ctx.currentTime, 0.03); };
-    return { parar, final: () => { if (!cortado) return; const m2 = ctx.currentTime + 0.1; [72, 76, 79, 84].forEach((n, k) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = midi(n); g.gain.setValueAtTime(0.0001, m2 + k * 0.05); g.gain.exponentialRampToValueAtTime(0.03, m2 + k * 0.05 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, m2 + k * 0.05 + 0.9); o.connect(g); g.connect(ctx.destination); o.start(m2 + k * 0.05); o.stop(m2 + k * 0.05 + 1); }); } };
+    return { parar, final: () => { if (!cortado) return; const m2 = ctx.currentTime + 0.1; [72, 76, 79, 84].forEach((n, k) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = midi(n); g.gain.setValueAtTime(0.0001, m2 + k * 0.05); g.gain.exponentialRampToValueAtTime(0.1, m2 + k * 0.05 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, m2 + k * 0.05 + 0.9); o.connect(g); g.connect(ctx.destination); o.start(m2 + k * 0.05); o.stop(m2 + k * 0.05 + 1); }); } };
   }
   function alternarSonido() {
     const on = !sonidoOn();
@@ -450,7 +460,7 @@
     document.querySelectorAll('[data-evo-sound]').forEach((b) => { b.setAttribute('aria-pressed', String(on)); b.innerHTML = Icon(on ? 'volume_up' : 'volume_off', 'text-3xl'); });
     if (on) {                                              // aviso suave de que suena (tambien desbloquea el audio del iPad)
       const ctx = audio();
-      if (ctx) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = midi(79); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.4); }
+      if (ctx) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = midi(79); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.4); }
     } else if (sonidoActual) sonidoActual.parar();
   }
   let sonidoActual = null;
