@@ -25,7 +25,7 @@
   'use strict';
   const { CFG, uid, clone, esc, store, isDemo, apiGet, apiPost, resetDemo, pickState } = window.TP;
   const { resolve, safeIcon, Icon, renderStreak, renderNote, btnClass, IconButton, Segmented, renderEmpty, renderStatus, toast, openSheet, closeSheet } = window.UI;
-
+  const syncIcon = document.querySelector('#tu-id-o-clase-del-icono');
   /* ======================= 1. ESTADO ======================= */
   const KEY = 'tp_prof_v3';
   const saved = store.get(KEY, {});
@@ -50,6 +50,7 @@
   let wheel = { phase: 'idle', pool: [], name: '', winner: null, bonus: 0 }; // ruleta
   let wheelTimer = null;
   let mtab = 'suma';                // pestana de la hoja de motivos
+  
 
   const $ = (s) => document.querySelector(s);
   // Copia automatica del carrito en la hoja "Carrito" (para el envio de las 21:00 aunque la web este cerrada)
