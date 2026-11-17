@@ -188,7 +188,7 @@
   }
 
   const MASCOTA_GROW = {
-    si: (m) => `<button type="button" data-evolucionar class="pressable flex items-center justify-center gap-3 w-full h-tap px-4 rounded-ui bg-primary text-on-primary text-2xl font-bold">${Icon('auto_awesome', 'text-3xl', true)}<span>Evolucionar</span></button>`,
+    si: (m) => `<div class="flex gap-3"><button type="button" data-evolucionar class="pressable flex flex-1 items-center justify-center gap-3 h-tap px-4 rounded-ui bg-primary text-on-primary text-2xl font-bold">${Icon('auto_awesome', 'text-3xl', true)}<span>Evolucionar</span></button>${SonidoBtn('bg-surface-alt text-ink')}</div>`,
     no: () => ''
   };
   // Peligro: la mascota nunca retrocede; el profe decide si se reinicia. Tono tranquilo, sin dramatizar.
@@ -388,6 +388,72 @@
    * animaciones de la Web Animations API (no les afecta la regla de "sin animaciones CSS" del perfil alumno).
    * Para cambiar el ritmo se toca EVO_FASES; sirve igual para 1->2, 2->3, 3->4 y 4->5.
    * Con "Reducir movimiento" solo hay un fundido suave, sin balanceo ni destellos. */
+  /* Sonido sintetizado (Web Audio, sin archivos): estilo chiptune de evolucion. Melodia propia, no copia ninguna.
+   * Apagado por defecto (perfiles sensibles al sonido); el interruptor se guarda en cada iPad. */
+  const SONIDO_KEY = 'tp_evo_sound';
+  const sonidoOn = () => store.get(SONIDO_KEY, false) === true;
+  const SonidoBtn = (cls) => `<button type="button" data-evo-sound aria-label="Sonido" aria-pressed="${sonidoOn()}" class="pressable flex items-center justify-center w-tap h-tap shrink-0 rounded-ui ${cls}">${Icon(sonidoOn() ? 'volume_up' : 'volume_off', 'text-3xl')}</button>`;
+  let audioCtx = null;
+  function audio() {
+    if (!audioCtx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; audioCtx = new C(); }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+  const PENTA = [0, 2, 4, 7, 9];
+  /** Programa toda la secuencia (alineada con EVO_FASES) y devuelve {parar, final}. */
+  function evoSonido(F) {
+    const ctx = audio();
+    if (!ctx) return null;
+    const master = ctx.createGain();
+    master.gain.value = 0.55;
+    master.connect(ctx.destination);
+    const t0 = ctx.currentTime + 0.05;
+    const nota = (n, t, dur, tipo, vol, hasta) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = tipo; o.frequency.setValueAtTime(midi(n), t);
+      if (hasta) o.frequency.exponentialRampToValueAtTime(midi(hasta), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+    };
+    const acorde = (t) => {                                // final: acorde mayor con eco
+      [72, 76, 79, 84].forEach((n, i) => nota(n, t + i * 0.07, 1.3, 'square', 0.035));
+      nota(48, t, 1.4, 'triangle', 0.08);
+      nota(60, t + 0.45, 1.0, 'triangle', 0.04);
+    };
+    const luz0 = t0 + F.reposo / 1000, luzFin = luz0 + F.luz / 1000;
+    // 1. arpegio pentatonico ascendente que se acelera mientras crece la luz
+    let t = luz0, i = 0;
+    while (t < luzFin - 0.05) {
+      const p = (t - luz0) / (F.luz / 1000);
+      const n = Math.min(96, 57 + PENTA[i % 5] + 12 * Math.floor(i / 5));
+      nota(n, t, 0.16, 'square', 0.025 + 0.03 * p);
+      t += 0.26 - 0.14 * p; i++;
+    }
+    // 2. glissando suave por debajo (triangulo) que sube con la luz
+    nota(48, luz0, F.luz / 1000, 'triangle', 0.07, 84);
+    // 3. destello rapido en el cambio
+    [84, 88, 91, 96, 91, 96].forEach((n, k) => nota(n, luzFin + k * 0.06, 0.16, 'triangle', 0.045));
+    // 4. revelado: acorde y chispas sueltas (una por destello visual)
+    const rev0 = luzFin + F.cambio / 1000;
+    acorde(rev0);
+    EVO_DESTELLOS.forEach((_, k) => nota(96 + (k % 3) * 3, rev0 + 0.25 + k * (F.revelado / 1000) * 0.08, 0.18, 'sine', 0.03));
+    let cortado = false;
+    const parar = () => { cortado = true; master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(0, ctx.currentTime, 0.03); };
+    return { parar, final: () => { if (!cortado) return; const m2 = ctx.currentTime + 0.1; [72, 76, 79, 84].forEach((n, k) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = midi(n); g.gain.setValueAtTime(0.0001, m2 + k * 0.05); g.gain.exponentialRampToValueAtTime(0.03, m2 + k * 0.05 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, m2 + k * 0.05 + 0.9); o.connect(g); g.connect(ctx.destination); o.start(m2 + k * 0.05); o.stop(m2 + k * 0.05 + 1); }); } };
+  }
+  function alternarSonido() {
+    const on = !sonidoOn();
+    store.set(SONIDO_KEY, on);
+    document.querySelectorAll('[data-evo-sound]').forEach((b) => { b.setAttribute('aria-pressed', String(on)); b.innerHTML = Icon(on ? 'volume_up' : 'volume_off', 'text-3xl'); });
+    if (on) {                                              // aviso suave de que suena (tambien desbloquea el audio del iPad)
+      const ctx = audio();
+      if (ctx) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = midi(79); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35); o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.4); }
+    } else if (sonidoActual) sonidoActual.parar();
+  }
+  let sonidoActual = null;
   const EVO_FASES = { reposo: 900, luz: 2600, cambio: 700, revelado: 1900 };   // ms
   const EVO_DESTELLOS = [[8, 18], [86, 12], [12, 74], [84, 70], [50, 2], [0, 46], [96, 44]];   // % (x, y) alrededor
   let evoSaltar = null;
@@ -412,6 +478,7 @@
     ov.setAttribute('aria-modal', 'true');
     ov.setAttribute('aria-label', 'Evolución de ' + m.nombre);
     ov.innerHTML = `
+      <div class="absolute top-6 left-6">${SonidoBtn('bg-surface-alt text-ink-soft')}</div>
       <button type="button" data-evo-skip aria-label="Omitir" class="pressable absolute top-6 right-6 flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft">${Icon('skip_next', 'text-3xl')}</button>
       <div class="relative flex items-center justify-center w-80 h-80">
         <div data-evo-halo class="absolute inset-0 rounded-full" style="opacity:0;background:radial-gradient(circle, rgb(var(--c-primary) / .6) 0%, rgb(var(--c-primary) / .28) 45%, transparent 72%)"></div>
@@ -429,8 +496,9 @@
     const old = ov.querySelector('[data-evo-old]'), nuevo = ov.querySelector('[data-evo-new]');
     const halo = ov.querySelector('[data-evo-halo]'), msg = ov.querySelector('[data-evo-msg]'), fin = ov.querySelector('[data-evo-fin]');
     const sparks = ov.querySelector('[data-evo-sparks]');
-    evoSaltar = () => { saltado = true; activas.forEach((a) => { try { a.finish(); } catch (e) { /* ya terminada */ } }); };
+    evoSaltar = () => { saltado = true; if (sonidoActual) { sonidoActual.parar(); sonidoActual.final(); } activas.forEach((a) => { try { a.finish(); } catch (e) { /* ya terminada */ } }); };
     const F = EVO_FASES;
+    sonidoActual = sonidoOn() && !sinMov ? evoSonido(F) : (sonidoOn() ? evoSonido({ ...F, luz: 400, reposo: 300 }) : null);
     const espera = (ms) => new Promise((ok) => { const id = setTimeout(ok, saltado ? 0 : ms); activas.push({ finish() { clearTimeout(id); ok(); } }); });
     const BRILLO = 'brightness(2.1) saturate(.35)';
 
@@ -463,6 +531,7 @@
     ov.querySelector('[data-evo-skip]').style.display = 'none';
     fin.focus();
     evoSaltar = null;
+    sonidoActual = null;
   }
 
   function iniciarEvolucion() {
@@ -1348,6 +1417,7 @@
   const CLICK_HANDLERS = [
     ['[data-open-mascota]', () => openMascota()],
     ['[data-evolucionar]', () => iniciarEvolucion()],
+    ['[data-evo-sound]', () => alternarSonido()],
     ['[data-evo-skip]', () => { if (evoSaltar) evoSaltar(); }],
     ['[data-evo-fin]', () => terminarEvolucion()],
     ['[data-mascota-view]', (el) => { mascotaView = el.dataset.mascotaView; if (mascotaView !== 'cuidar') cuidaSel = ''; renderMascota(); const b = $('#mascota-body'); if (b) b.scrollTop = 0; }],
