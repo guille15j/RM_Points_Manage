@@ -52,11 +52,62 @@
   let mtab = 'suma';                // pestana de la hoja de motivos
 
   const $ = (s) => document.querySelector(s);
-  const persist = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, mascota: S.mascota, estrellas: S.estrellas, ayudante: S.ayudante, uso: S.uso, cart: S.cart, pending: S.pending });
+  // Copia automatica del carrito en la hoja "Carrito" (para el envio de las 21:00 aunque la web este cerrada)
+  let cartSyncSig = S.cart.length ? null : '[]';
+  let cartSyncTimer = null;
+  let cartSyncInflight = null;
+  const saveLocal = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, mascota: S.mascota, estrellas: S.estrellas, ayudante: S.ayudante, uso: S.uso, cart: S.cart, pending: S.pending });
+  const persist = () => { saveLocal(); scheduleCartSync(); };
   const applyServer = (res) => {
     ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
     ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
+    aplicarCarritoAuto(res.carritoAuto);
   };
+  /** Lo que el servidor ya envio solo a las 21:00 se quita del carrito del movil (nunca se envia dos veces). */
+  function aplicarCarritoAuto(a) {
+    if (!a || !a.ids || !a.ids.length || !S.cart.length) return;
+    const n = S.cart.length;
+    S.cart = S.cart.filter((c) => !a.ids.includes(c.id));
+    if (S.cart.length === n) return;
+    if (!S.cart.length) S.pending = null;
+    saveLocal();
+    render();
+    toast('Lo pendiente del carrito se envió solo a las 21:00', 'ok');
+  }
+  const cartSig = () => JSON.stringify(S.cart.map((c) => [c.id, c.alumnoId, c.tipo, c.delta, c.nota || '', c.ref || '', c.accion || '', c.ok === true]));
+  const batchSig = () => JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '', c.accion || '', c.ok === true]));
+  function scheduleCartSync() {
+    if (isDemo() || sending || cartSig() === cartSyncSig) return;
+    clearTimeout(cartSyncTimer);
+    cartSyncTimer = setTimeout(syncCart, 1500);                // espera a que el profesor termine de tocar
+  }
+  /** Sube el carrito a la hoja en segundo plano. No bloquea nada: el carrito local sigue siendo la fuente inmediata. */
+  async function syncCart() {
+    if (isDemo() || sending) return;
+    const sig = cartSig();
+    const items = S.cart.slice();
+    let batchId = 'vacio';
+    if (items.length) {                                         // mismo batchId que usara el envio manual: nunca se duplica
+      const bs = batchSig();
+      batchId = S.pending && S.pending.sig === bs ? S.pending.id : uid();
+      S.pending = { id: batchId, sig: bs };
+      saveLocal();
+    }
+    const movimientos = items.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
+    cartSyncInflight = apiPost({ action: 'carrito_guardar', batchId, movimientos, ids: items.map((c) => c.id) });
+    try {
+      const res = await cartSyncInflight;
+      cartSyncSig = sig;
+      aplicarCarritoAuto(res.carritoAuto);
+    } catch (e) {
+      console.warn('Copia del carrito pendiente:', e.message);
+      clearTimeout(cartSyncTimer);
+      cartSyncTimer = setTimeout(scheduleCartSync, 15000);      // sin conexion: se reintenta
+    } finally {
+      cartSyncInflight = null;
+      scheduleCartSync();                                       // por si cambio mientras se subia
+    }
+  }
   const findInsignia = (id) => S.insignias.find((i) => i.id === id);
   const randInt = (n) => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
@@ -724,12 +775,15 @@
     if (sending || !S.cart.length) return;
     sending = true;
     S.banner = null;
+    clearTimeout(cartSyncTimer);
+    if (cartSyncInflight) { try { await cartSyncInflight; } catch (e) { /* da igual: se envia igualmente */ } }   // evita que una copia vieja llegue despues
 
     // 1) SNAPSHOT del estado anterior (para el rollback)
     const snapshot = clone({ alumnos: S.alumnos, cart: S.cart });
 
     // 2) batchId idempotente: si reintentamos el MISMO carrito, reutilizamos el id
-    const sig = JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '', c.accion || '', c.ok === true]));
+    const sig = batchSig();
+    const ids = S.cart.map((c) => c.id);
     const batchId = S.pending && S.pending.sig === sig ? S.pending.id : uid();
     S.pending = { id: batchId, sig };
 
@@ -749,7 +803,7 @@
 
     try {
       // 4) Envio al ledger (Google Apps Script)
-      const res = await apiPost({ action: 'batch', batchId, movimientos });
+      const res = await apiPost({ action: 'batch', batchId, movimientos, ids });
       applyServer(res); // la verdad del servidor
       S.pending = null;
       persist();
@@ -769,6 +823,7 @@
     } finally {
       sending = false;
       render();
+      scheduleCartSync();
     }
   }
 
