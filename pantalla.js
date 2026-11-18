@@ -130,6 +130,12 @@
   };
   /** Etapas aun no alcanzadas: mascota/unknown.gif|png|svg. Si no hay ninguno, un signo de interrogacion. */
   const MascotaUnknown = (cls) => `<img src="mascota/unknown.${MASCOTA_EXT[extUsada.u || 0]}" data-unknown="1" data-cls="${cls}" alt="Todavía es un misterio" class="mascota-px object-contain ${cls}" draggable="false">`;
+  document.addEventListener('load', (e) => {          // el GIF de accion ya esta: ahora empieza a contar su duracion
+    const img = e.target;
+    if (img && img.dataset && img.dataset.accion && mascotaAnim && mascotaAnim.fin && String(img.getAttribute('src')).indexOf('v=' + mascotaAnim.token) > 0) {
+      const f = mascotaAnim.fin; mascotaAnim.fin = null; f();
+    }
+  }, true);
   document.addEventListener('error', (e) => {
     const img = e.target;
     if (!img || !img.dataset) return;
@@ -389,12 +395,15 @@
     renderMascota();
     openSheet('sheet-mascota');
     renderMascotaFab();
-    setTimeout(() => {
+    // La animacion dura MASCOTA_ANIM_MS desde que el GIF se ha cargado (en el iPad uno pesado tarda); tope de seguridad 20 s
+    const fin = () => {
       if (mascotaAnim && mascotaAnim.token === token) {
         mascotaAnim = null;
         if (mascotaOpen()) renderMascota();
       }
-    }, MASCOTA_ANIM_MS);
+    };
+    mascotaAnim.fin = () => setTimeout(fin, MASCOTA_ANIM_MS);
+    setTimeout(fin, 20000);
   }
   function openMascota() {
     if (!S.mascota) return;
