@@ -192,17 +192,17 @@
   const FAB_STATES = {
     peligro: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: está en peligro" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-attention shadow-lg">
-        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-attention text-on-primary">${Icon('warning', 'text-xl', true)}</span>
       </button>`,
     nuevo: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
-        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-primary text-on-primary">${Icon('arrow_upward', 'text-xl', true)}</span>
       </button>`,
     normal: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}" class="pressable flex items-center justify-center w-24 h-24 rounded-full bg-surface border-2 border-line shadow-lg">
-        ${MascotaImg(etapaVista(m), 'w-16 h-16')}
+        ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
       </button>`,
     ninguno: () => ''
   };
@@ -337,6 +337,8 @@
     diario: (m) => bigBtn('diario', 'menu_book', 'Diario'),
     nada: () => ''
   };
+  /** Mientras la necesidad esta pendiente se ve el GIF de esa necesidad (mascota/etapa-N-<accion>.gif); al atenderla vuelve el normal. */
+  const necesidadActiva = (m) => (puedeCuidar(m) ? m.necesidad : '');
   const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1 && !evoPendiente(m);
   const MASCOTA_VIEWS = {
     main: (m) => {
@@ -353,7 +355,7 @@
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, evoPendiente(m) ? 'si' : 'no', 'no')(m)}
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
-        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(v, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(v), mascotaAnim && mascotaAnim.accion)}</div></div>
+        <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(v, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(v), necesidadActiva(m))}</div></div>
         <div class="grid gap-3 ${hayDiario ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
         ${resolve(MASCOTA_PROGRESS, evoPendiente(m) ? 'pendiente' : m.maxima ? 'maxima' : 'creciendo', 'creciendo')(m)}
@@ -389,23 +391,12 @@
   /** Tras atender a la mascota: abre su pantalla y lanza el GIF de la accion; al acabar vuelve al GIF base. */
   function playMascotaAnim(accion) {
     if (!S.mascota) return;
+    mascotaAnim = null;
     piarMascota();
-    const token = Date.now();
-    mascotaAnim = { accion, token };
-    console.info('[mascota] animacion de cuidado:', accion, 'etapa mostrada', S.mascota.etapa, 'vista', etapaVista(S.mascota));
     mascotaView = 'main';
     renderMascota();
     openSheet('sheet-mascota');
     renderMascotaFab();
-    // La animacion dura MASCOTA_ANIM_MS desde que el GIF se ha cargado (en el iPad uno pesado tarda); tope de seguridad 20 s
-    const fin = () => {
-      if (mascotaAnim && mascotaAnim.token === token) {
-        mascotaAnim = null;
-        if (mascotaOpen()) renderMascota();
-      }
-    };
-    mascotaAnim.fin = () => setTimeout(fin, MASCOTA_ANIM_MS);
-    setTimeout(fin, 20000);
   }
   function openMascota() {
     if (!S.mascota) return;
