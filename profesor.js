@@ -58,21 +58,29 @@
   let cartSyncInflight = null;
   const saveLocal = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, mascota: S.mascota, estrellas: S.estrellas, ayudante: S.ayudante, uso: S.uso, cart: S.cart, pending: S.pending });
   const persist = () => { saveLocal(); scheduleCartSync(); };
+  let lastTs = '';
   const applyServer = (res) => {
-    ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
-    ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
-    aplicarCarritoAuto(res.carritoAuto);
+    const vieja = !!res.ts && res.ts < lastTs;                  // respuesta que llego tarde: no pisa a otra mas reciente
+    if (res.ts && !vieja) lastTs = res.ts;
+    if (!vieja) {
+      ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
+      ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
+    }
+    aplicarAplicados(res.aplicados);
   };
-  /** Lo que el servidor ya envio solo a las 21:00 se quita del carrito del movil (nunca se envia dos veces). */
-  function aplicarCarritoAuto(a) {
-    if (!a || !a.ids || !a.ids.length || !S.cart.length) return;
+  /** El servidor lista los elementos de carrito que YA ha aplicado (envio manual, automatico o con respuesta perdida).
+   *  Se quitan del carrito del movil: asi nunca se pueden enviar dos veces. */
+  function aplicarAplicados(ids) {
+    if (!Array.isArray(ids) || !ids.length || !S.cart.length) return false;
+    const hechos = new Set(ids);
     const n = S.cart.length;
-    S.cart = S.cart.filter((c) => !a.ids.includes(c.id));
-    if (S.cart.length === n) return;
+    S.cart = S.cart.filter((c) => !hechos.has(c.id));
+    if (S.cart.length === n) return false;
     if (!S.cart.length) S.pending = null;
     saveLocal();
     render();
-    toast('Lo pendiente del carrito se envió solo a las 21:00', 'ok');
+    toast(`${n - S.cart.length} del carrito ya estaban enviados: se han quitado`, 'info');
+    return true;
   }
   const cartSig = () => JSON.stringify(S.cart.map((c) => [c.id, c.alumnoId, c.tipo, c.delta, c.nota || '', c.ref || '', c.accion || '', c.ok === true]));
   const batchSig = () => JSON.stringify(S.cart.map((c) => [c.alumnoId, c.tipo, c.delta, c.ref || '', c.accion || '', c.ok === true]));
@@ -84,21 +92,22 @@
   /** Sube el carrito a la hoja en segundo plano. No bloquea nada: el carrito local sigue siendo la fuente inmediata. */
   async function syncCart() {
     if (isDemo() || sending) return;
+    if (cartSyncInflight) return;                               // una a la vez: asi llegan siempre en orden (al terminar se reprograma)
     const sig = cartSig();
     const items = S.cart.slice();
     let batchId = 'vacio';
-    if (items.length) {                                         // mismo batchId que usara el envio manual: nunca se duplica
+    if (items.length) {                                         // mismo batchId que usara el envio manual
       const bs = batchSig();
       batchId = S.pending && S.pending.sig === bs ? S.pending.id : uid();
       S.pending = { id: batchId, sig: bs };
       saveLocal();
     }
-    const movimientos = items.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
-    cartSyncInflight = apiPost({ action: 'carrito_guardar', batchId, movimientos, ids: items.map((c) => c.id) });
+    const movimientos = items.map(toMov);
+    cartSyncInflight = apiPost({ action: 'carrito_guardar', batchId, movimientos, ids: items.map((c) => c.id), seq: Date.now() });
     try {
       const res = await cartSyncInflight;
       cartSyncSig = sig;
-      aplicarCarritoAuto(res.carritoAuto);
+      aplicarAplicados(res.aplicados);
     } catch (e) {
       console.warn('Copia del carrito pendiente:', e.message);
       clearTimeout(cartSyncTimer);
@@ -108,6 +117,7 @@
       scheduleCartSync();                                       // por si cambio mientras se subia
     }
   }
+  const toMov = (c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true });
   const findInsignia = (id) => S.insignias.find((i) => i.id === id);
   const randInt = (n) => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] % n; };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
@@ -500,6 +510,12 @@
       setStatus('off'); toast(`No se ha podido cambiar (${err.message})`, 'err');
     } finally { tpvBusy.delete(id); render(); }
   }
+  /** Desbloquea (o bloquea) varios perfiles a la vez; cada uno queda independiente de los demas. */
+  async function tpvMulti(ids, to) {
+    const list = ids.filter((id) => { const a = findAlumno(id); return a && (to === 'abrir' ? !a.desbloqueado : !!a.desbloqueado); });
+    if (!list.length) return toast(to === 'abrir' ? 'Elige alumnos que sigan bloqueados' : 'Todos están ya bloqueados', 'info');
+    await Promise.all(list.map((id) => tpvToggle(id, to)));
+  }
   const EST_ACCION = {
     libre: (e, pts) => `
       <div class="grid grid-cols-2 gap-2">
@@ -787,7 +803,7 @@
     const batchId = S.pending && S.pending.sig === sig ? S.pending.id : uid();
     S.pending = { id: batchId, sig };
 
-    const movimientos = S.cart.map((c) => ({ alumnoId: c.alumnoId, tipo: c.tipo, delta: c.delta, nota: c.nota || '', ref: c.ref || '', accion: c.accion || '', ok: c.ok === true }));
+    const movimientos = S.cart.map(toMov);
 
     // 3) Actualizacion OPTIMISTA: aplicamos saldos y vaciamos el carrito al instante
     const sim = simulate();
@@ -803,7 +819,7 @@
 
     try {
       // 4) Envio al ledger (Google Apps Script)
-      const res = await apiPost({ action: 'batch', batchId, movimientos, ids });
+      const res = await apiPost({ action: 'batch', batchId, movimientos, ids }, 30000);
       applyServer(res); // la verdad del servidor
       S.pending = null;
       persist();
@@ -816,10 +832,23 @@
       // 5) ROLLBACK: restauramos estado local e interfaz al snapshot anterior
       console.error('Envio fallido:', err);
       S.alumnos = snapshot.alumnos;
-      S.cart = snapshot.cart;
+      S.cart = snapshot.cart.concat(S.cart);   // lo que se anadio mientras se enviaba tambien se conserva
       persist(); // S.pending se conserva para reintentar de forma idempotente
-      setStatus('off');
-      S.banner = `No se pudo enviar (${err.message}). El carrito se ha restaurado: revisa la conexión y vuelve a pulsar Enviar.`;
+      // La respuesta pudo perderse aunque el servidor SI registrara el lote: se comprueba antes de pedir un reenvio
+      let aplicado = false;
+      try {
+        applyServer(await apiGet());           // el servidor devuelve los elementos ya aplicados y se quitan del carrito
+        aplicado = snapshot.cart.every((c) => !S.cart.some((x) => x.id === c.id));
+      } catch (e2) { /* sin conexion: no se puede comprobar */ }
+      if (aplicado) {
+        S.pending = null;
+        persist();
+        setStatus(isDemo() ? 'demo' : 'ok');
+        toast('Enviado: la confirmación tardó, pero se registró correctamente', 'ok');
+      } else {
+        setStatus('off');
+        S.banner = `No se pudo enviar (${err.message}). El carrito se ha restaurado: revisa la conexión y vuelve a pulsar Enviar. Si ya se había registrado, no se duplicará.`;
+      }
     } finally {
       sending = false;
       render();
@@ -855,6 +884,8 @@
         nota: conf ? 'Ayudante de turno: hecho' : 'Ayudante de turno: pasa al siguiente' }, 'Añadido al carrito');
     }],
     ['[data-tpv]', (el) => tpvToggle(el.dataset.tpv, el.dataset.to)],
+    ['#btn-tpv-sel', () => { closeSheet('sheet-mas'); tpvMulti([...selected], 'abrir'); }],
+    ['#btn-tpv-all', () => { closeSheet('sheet-mas'); tpvMulti(S.alumnos.map((a) => a.id), 'cerrar'); }],
     ['[data-est-undo]', (el) => { S.cart = S.cart.filter((c) => !(c.tipo === 'estrella_res' && c.ref === el.dataset.estUndo)); persist(); render(); renderClase(); }],
     ['[data-est-ok]', (el) => estrellaCarrito(el.dataset.estOk, true)],
     ['[data-est-no]', (el) => estrellaCarrito(el.dataset.estNo, false)],

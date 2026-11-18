@@ -127,8 +127,56 @@
     return Object.assign({ ok: true, duplicado: res.duplicado, bonificaciones: res.bonificaciones }, Engine.computeState(t, ctx));
   }
 
+  /* ---------- Indicador de red: el icono de sincronizacion gira mientras haya peticiones y se para al responder ---------- */
+  let netPending = 0;
+  let netAnim = null;
+  let netFeedbackTimer = null;
+  const netIcon = () => document.querySelector('#btn-refresh .icon');
+  const netSinMov = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function netStart() {
+    netPending++;
+    const ic = netIcon();
+    if (!ic) return;
+    clearTimeout(netFeedbackTimer);
+    ic.textContent = 'sync';
+    ic.style.color = '';
+    document.getElementById('btn-refresh').setAttribute('aria-busy', 'true');
+    if (netAnim && netAnim.playState === 'finished') { netAnim.cancel(); netAnim = null; }
+    if (netAnim) netAnim.effect.updateTiming({ iterations: Infinity });   // otra peticion antes de parar: sigue girando
+    else if (!netSinMov()) {
+      netAnim = ic.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 900, iterations: Infinity, easing: 'linear' });
+    }
+  }
+  function netEnd(ok) {
+    netPending = Math.max(0, netPending - 1);
+    if (netPending > 0) return;
+    const ic = netIcon();
+    if (!ic) return;
+    const feedback = () => {                                   // resultado visible un momento: tick (ok) o aviso (fallo)
+      netAnim = null;
+      document.getElementById('btn-refresh').removeAttribute('aria-busy');
+      ic.textContent = ok ? 'check' : 'sync_problem';
+      ic.style.color = ok ? 'rgb(var(--c-success))' : 'rgb(var(--c-attention))';
+      clearTimeout(netFeedbackTimer);
+      netFeedbackTimer = setTimeout(() => { ic.textContent = 'sync'; ic.style.color = ''; }, 1600);
+    };
+    if (!netAnim) return feedback();
+    const tm = netAnim.effect.getComputedTiming();               // termina la vuelta en curso y entonces se detiene
+    netAnim.effect.updateTiming({ iterations: Math.ceil((tm.currentIteration || 0) + (tm.progress || 0.01)) });
+    const a = netAnim;
+    a.finished.then(() => { if (netAnim === a && netPending === 0) { a.cancel(); feedback(); } }).catch(() => {});
+  }
+
   /* ---------- API publica ---------- */
   async function apiGet() {
+    netStart();
+    try { const r = await apiGetRaw(); netEnd(true); return r; } catch (e) { netEnd(false); throw e; }
+  }
+  async function apiPost(payload, ms) {
+    netStart();
+    try { const r = await apiPostRaw(payload, ms); netEnd(true); return r; } catch (e) { netEnd(false); throw e; }
+  }
+  async function apiGetRaw() {
     if (isDemo()) {
       await sleep(150);
       return Object.assign({ ok: true }, Engine.computeState(await demoTables(), demoCtx()));
@@ -153,7 +201,7 @@
  *  { action:'mascota', batchId, accion:'reiniciar'|'cerrar_nombre' }  (profesor)
    * El batchId hace la operacion idempotente: reintentar no duplica movimientos.
    */
-  async function apiPost(payload) {
+  async function apiPostRaw(payload, ms) {
     payload = Object.assign({}, payload, { token: CFG.TOKEN });
     if (isDemo()) {
       await sleep(500);
@@ -166,7 +214,7 @@
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
       redirect: 'follow'
-    });
+    }, ms);
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'Error del servidor');
     return j;

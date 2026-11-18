@@ -59,7 +59,13 @@
 
   const $ = (s) => document.querySelector(s);
   const persist = () => store.set(KEY, Object.assign(pickState(S), { tab: S.tab, view: S.view }));
-  const applyServer = (res) => STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota' || k === 'ayudante')) S[k] = res[k]; });
+  // Respuestas que llegan desordenadas (p. ej. el desbloqueo del profesor y el "Cambiar" a la vez): una respuesta
+  // mas antigua nunca pisa a otra mas reciente (cada respuesta lleva la hora del servidor, ts).
+  let lastTs = '';
+  const applyServer = (res) => {
+    if (res.ts) { if (res.ts < lastTs) return; lastTs = res.ts; }
+    STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota' || k === 'ayudante')) S[k] = res[k]; });
+  };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findPremio = (id) => S.premios.find((p) => p.id === id);
@@ -354,12 +360,17 @@
   }
   const mascotaOpen = () => document.getElementById('sheet-mascota').classList.contains('open');
   function renderMascota() {
-    if (S.mascota) $('#mascota-body').innerHTML = MascotaBody(S.mascota);
+    if (S.mascota) {
+      const cuerpo = MascotaBody(S.mascota);
+      const toggle = S.mascota.etapa >= 1 && cuerpo.indexOf('data-evo-sound') < 0 ? `<div class="flex justify-end">${SonidoBtn('bg-surface text-muted')}</div>` : '';
+      $('#mascota-body').innerHTML = toggle + cuerpo;
+    }
     else closeSheet('sheet-mascota');
   }
   /** Tras atender a la mascota: abre su pantalla y lanza el GIF de la accion; al acabar vuelve al GIF base. */
   function playMascotaAnim(accion) {
     if (!S.mascota) return;
+    piarMascota();
     const token = Date.now();
     mascotaAnim = { accion, token };
     mascotaView = 'main';
@@ -375,6 +386,7 @@
   }
   function openMascota() {
     if (!S.mascota) return;
+    piarMascota();
     mascotaAnim = null;
     cuidaSel = '';
     mascotaView = 'main';
@@ -464,6 +476,28 @@
     } else if (sonidoActual) sonidoActual.parar();
   }
   let sonidoActual = null;
+  /** Piar suave de ambiente: solo si la mascota ya salio del huevo (etapa 2 en adelante), con sonido activado y sin ritual en curso. */
+  let piarT = 0;
+  function piarMascota() {
+    const m = S.mascota;
+    if (!m || etapaVista(m) < 1 || !sonidoOn() || sonidoActual || Date.now() - piarT < 1500) return;
+    const ctx = audio();
+    if (!ctx) return;
+    piarT = Date.now();
+    const t0 = ctx.currentTime + 0.05;
+    const base = 2300 + Math.min(4, etapaVista(m)) * 150;   // mas grande, algo mas grave
+    [[0, 1], [0.16, 1.22], [0.36, 1.1]].forEach(([dt, k]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t = t0 + dt;
+      o.type = 'sine';
+      o.frequency.setValueAtTime(base * k, t);
+      o.frequency.exponentialRampToValueAtTime(base * k * 1.35, t + 0.07);
+      o.frequency.exponentialRampToValueAtTime(base * k * 1.05, t + 0.13);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.06 * GANANCIA, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.16);
+    });
+  }
   const EVO_FASES = { reposo: 900, luz: 2600, cambio: 700, revelado: 1900 };   // ms
   const EVO_DESTELLOS = [[8, 18], [86, 12], [12, 74], [84, 70], [50, 2], [0, 46], [96, 44]];   // % (x, y) alrededor
   let evoSaltar = null;
@@ -902,7 +936,7 @@
     clave: () => `
       <form data-tpv-form class="flex items-center gap-3 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
         <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
-        <input id="tpv-clave" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
+        <input id="tpv-clave" type="password" autocomplete="new-password" placeholder="Contraseña" aria-label="Contraseña" class="min-w-0 flex-1 h-tap px-4 text-2xl rounded-ui border-2 border-line bg-page outline-none focus:border-primary">
         <button type="submit" class="pressable h-tap px-5 rounded-ui bg-primary text-on-primary text-xl font-bold">Abrir</button>
         <button type="button" data-tpv-cancel aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft">${Icon('close', 'text-3xl')}</button>
       </form>`
