@@ -362,9 +362,12 @@ const Engine = (function () {
     return '';
   }
   /** TPV: un alumno solo puede canjear si el profesor lo ha desbloqueado. Se vuelve a bloquear tras canjear/enviar estrella o al pulsar Cambiar. */
-  function tpvAbiertos(led) {
+  function tpvAbiertos(led, items) {
     const m = {};
+    const cuidados = {};                                   // cuidar a la mascota no depende del desbloqueo ni lo consume
+    (items || []).forEach((i) => { if (esCuidado(i)) cuidados[str(i.id)] = true; });
     led.forEach((r) => {
+      if (r.tipo === 'canje' && cuidados[str(r.ref)]) return;
       if (r.tipo === 'tpv') m[str(r.alumnoId)] = str(r.ref) === 'abrir';
       else if (r.tipo === 'canje') m[str(r.alumnoId)] = false;
       else if (r.tipo === 'estrella') m[str(r.ref)] = false; // en 'estrella' el alumno que envia va en ref
@@ -474,7 +477,7 @@ const Engine = (function () {
     const it = insigniaTables(led, ctx, c.insigniaDias);
     const unlocks = unlockMap(items);
     const vot = votacionNombre(led, items, alumnosAct, c);
-    const tpv = tpvAbiertos(led);
+    const tpv = tpvAbiertos(led, items);
     const nombresAl = {};
     alumnosAct.forEach((a) => (nombresAl[str(a.id)] = str(a.nombre)));
     const recibidas = estrellasRecibidas(led, ctx, c.diasClase, hoy, nombresAl);
@@ -674,12 +677,12 @@ const Engine = (function () {
       // Control remoto del profesor: sin desbloqueo no se puede canjear. Cerrar tambien lo usa el iPad al pulsar Cambiar.
       const id = alumnoValido(p.alumnoId);
       const abrir = p.action === 'tpv_abrir';
-      if (!!tpvAbiertos(cur())[id] !== abrir) add(id, 'tpv', 0, abrir ? 'Canje desbloqueado' : 'Canje bloqueado', abrir ? 'profesor' : 'tpv', abrir ? 'abrir' : 'cerrar');
+      if (!!tpvAbiertos(cur(), items)[id] !== abrir) add(id, 'tpv', 0, abrir ? 'Canje desbloqueado' : 'Canje bloqueado', abrir ? 'profesor' : 'tpv', abrir ? 'abrir' : 'cerrar');
     } else if (p.action === 'canje') {
       const id = alumnoValido(p.alumnoId);
-      if (c.tpvBloqueo && !tpvAbiertos(cur())[id]) throw new Error('Pide a tu profe que te desbloquee');
       const premio = items.filter((i) => (i.tipo === 'premio' || i.tipo === 'cuidado') && isActivo(i) && str(i.id) === str(p.premioId))[0];
       if (!premio) throw new Error('Premio no válido');
+      if (!esCuidado(premio) && c.tpvBloqueo && !tpvAbiertos(cur(), items)[id]) throw new Error('Pide a tu profe que te desbloquee');
       if (premio.tipo === 'cuidado' && !accionDe(premio.efecto)) throw new Error('Cuidado sin acción válida');
       const coste = Number(premio.puntos) || 0;
       if ((bal[id] || 0) < coste) throw new Error('Saldo insuficiente');
@@ -705,7 +708,7 @@ const Engine = (function () {
       const id = alumnoValido(p.alumnoId);
       const para = alumnoValido(p.paraId);
       if (para === id) throw new Error('Elige a un compañero');
-      if (c.tpvBloqueo && !tpvAbiertos(cur())[id]) throw new Error('Pide a tu profe que te desbloquee');
+      if (c.tpvBloqueo && !tpvAbiertos(cur(), items)[id]) throw new Error('Pide a tu profe que te desbloquee');
       const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.efecto) === 'estrella')[0];
       if (!premio) throw new Error('La estrella amable no está disponible');
       const frase = str(p.frase).trim();
