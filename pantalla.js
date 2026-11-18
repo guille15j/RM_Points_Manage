@@ -133,6 +133,7 @@
   document.addEventListener('load', (e) => {          // el GIF de accion ya esta: ahora empieza a contar su duracion
     const img = e.target;
     if (img && img.dataset && img.dataset.accion && mascotaAnim && mascotaAnim.fin && String(img.getAttribute('src')).indexOf('v=' + mascotaAnim.token) > 0) {
+      console.info('[mascota] GIF cargado:', img.getAttribute('src'));
       const f = mascotaAnim.fin; mascotaAnim.fin = null; f();
     }
   }, true);
@@ -391,6 +392,7 @@
     piarMascota();
     const token = Date.now();
     mascotaAnim = { accion, token };
+    console.info('[mascota] animacion de cuidado:', accion, 'etapa mostrada', S.mascota.etapa, 'vista', etapaVista(S.mascota));
     mascotaView = 'main';
     renderMascota();
     openSheet('sheet-mascota');
