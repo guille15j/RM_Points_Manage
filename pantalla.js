@@ -133,8 +133,20 @@
   document.addEventListener('error', (e) => {
     const img = e.target;
     if (!img || !img.dataset) return;
-    if (img.dataset.accion) {                         // animacion sin archivo: se queda la imagen base
+    if (img.dataset.accion) {                         // animacion sin archivo: se prueban variantes de nombre y, si no hay, la imagen base
       const n = Number(img.dataset.mascota);
+      const probados = (img.dataset.probados || '').split('|').filter(Boolean);
+      probados.push(img.getAttribute('src').split('?')[0]);
+      const base = `mascota/etapa-${n}-`, acc = img.dataset.accion;
+      const variantes = [acc, acc.replace('banar', 'bañar'), acc.toUpperCase()]
+        .reduce((l, a) => l.concat([`${base}${a}.gif`, `${base}${a}.GIF`]), [])
+        .filter((u, i, l) => l.indexOf(u) === i && probados.indexOf(u) < 0);
+      if (variantes.length) {
+        img.dataset.probados = probados.join('|');
+        img.src = variantes[0] + '?v=' + (mascotaAnim ? mascotaAnim.token : 0);
+        return;
+      }
+      console.warn('Animacion de cuidado no encontrada. Probado:', probados.join(', '));
       img.removeAttribute('data-accion');
       img.src = `mascota/etapa-${n}.${MASCOTA_EXT[extUsada[n] || 0]}`;
       return;
