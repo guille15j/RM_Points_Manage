@@ -23,7 +23,7 @@
   /* ======================= 1. ESTADO ======================= */
   const KEY = 'tp_pant_v3';
   const saved = store.get(KEY, {});
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config', 'cola', 'equilibrio'];
   const S = {
     alumnos: saved.alumnos || [],
     reglas: saved.reglas || [],
@@ -34,6 +34,8 @@
     estrellas: saved.estrellas || [],     // solo las usa el panel del profesor
     ayudante: saved.ayudante || null,
     cuidados: saved.cuidados || [],
+    cola: saved.cola || [],               // alumnos esperando el TPV, en orden
+    equilibrio: null,
     config: saved.config || { rachaHito: 5, rachaBonus: 10, ruletaBonus: [], avatares: [], colores: [], cosmeticos: [], insigniaDias: 7 },
     tab: saved.tab || 'puntos',   // clave de TABS
     view: saved.view || 'cards',  // clave de POINTS_VIEWS
@@ -154,6 +156,7 @@
         return;
       }
       console.warn('Animacion de cuidado no encontrada. Probado:', probados.join(', '));
+      if (acc === 'muerta') img.classList.add('grayscale', 'opacity-60');
       img.removeAttribute('data-accion');
       img.src = `mascota/etapa-${n}.${MASCOTA_EXT[extUsada[n] || 0]}`;
       return;
@@ -195,6 +198,16 @@
         ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
         <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-attention text-on-primary">${Icon('warning', 'text-xl', true)}</span>
       </button>`,
+    muerta: (m) => `
+      <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha muerto" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface-alt border-4 border-line shadow-lg">
+        ${MascotaImg(etapaVista(m), 'w-16 h-16', '', 'muerta')}
+        <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-ink text-page">${Icon('heart_broken', 'text-xl', true)}</span>
+      </button>`,
+    descuido: (m) => `
+      <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: necesita cuidados" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-attention shadow-lg">
+        ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
+        <span class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded-full bg-attention text-on-primary">${Icon('schedule', 'text-xl', true)}</span>
+      </button>`,
     nuevo: (m) => `
       <button type="button" data-open-mascota aria-label="Ver a ${esc(m.nombre)}: ha crecido" class="pressable relative flex items-center justify-center w-24 h-24 rounded-full bg-surface border-4 border-primary shadow-lg">
         ${MascotaImg(etapaVista(m), 'w-16 h-16', '', necesidadActiva(m))}
@@ -206,7 +219,7 @@
       </button>`,
     ninguno: () => ''
   };
-  const getFabKind = (m) => (!m ? 'ninguno' : m.peligro ? 'peligro' : m.etapa > seenEtapa() ? 'nuevo' : 'normal');
+  const getFabKind = (m) => (!m ? 'ninguno' : muerta(m) ? 'muerta' : m.peligro ? 'peligro' : m.descuido && (m.descuido.estado === 'aviso' || m.descuido.estado === 'grave') ? 'descuido' : m.etapa > seenEtapa() ? 'nuevo' : 'normal');
   function renderMascotaFab() {
     const m = S.mascota;
     $('#fab-mascota').innerHTML = m ? `<div class="fab-mascota">${resolve(FAB_STATES, getFabKind(m), 'ninguno')(m)}</div>` : '';
@@ -221,6 +234,16 @@
     si: (m) => `<p class="flex items-center justify-center gap-2 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('warning', 'text-2xl', true)}<span>${esc(m.nombre)} está en peligro. Tu profe decidirá qué hacer.</span></p>`,
     no: () => ''
   };
+  // Aviso permanente para los ninos: si nadie la cuida varias clases seguidas, se muere. Tono claro y tranquilo (ambar, sin rojo).
+  const clasesTxt = (n) => `${n} ${n === 1 ? 'clase' : 'clases'}`;
+  const MASCOTA_DESCUIDO = {
+    muerta: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-surface-alt border-2 border-line text-lg font-bold">${Icon('heart_broken', 'text-3xl', true)}<span>${esc(m.nombre)} ha muerto porque nadie la cuidó durante ${clasesTxt(m.descuido.limite)} seguidas. Tu profe puede revivirla.</span></p>`,
+    grave: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('warning', 'text-3xl', true)}<span>Última oportunidad: hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si falta el cuidado de la próxima clase, morirá.</span></p>`,
+    aviso: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('schedule', 'text-3xl', true)}<span>Hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si pasan ${clasesTxt(m.descuido.limite)} seguidas, morirá.</span></p>`,
+    bien: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-surface-alt text-ink-soft text-lg">${Icon('info', 'text-3xl')}<span>${m.etapa >= 1 ? 'Cuídala en cada clase.' : 'Cuando salga del huevo, cuídala en cada clase.'} Si pasan <strong class="text-ink">${clasesTxt(m.descuido.limite)} seguidas</strong> sin cuidarla, se muere.</span></p>`,
+    nada: () => ''
+  };
+  const claveDescuido = (m) => (!m.descuido || !m.descuido.limite ? 'nada' : m.descuido.estado);
   const MASCOTA_PROGRESS = {
     pendiente: () => '',
     creciendo: (m) => `
@@ -338,8 +361,9 @@
     nada: () => ''
   };
   /** Mientras la necesidad esta pendiente se ve el GIF de esa necesidad (mascota/etapa-N-<accion>.gif); al atenderla vuelve el normal. */
-  const necesidadActiva = (m) => (puedeCuidar(m) ? m.necesidad : '');
-  const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1 && !evoPendiente(m);
+  const muerta = (m) => !!(m && m.descuido && m.descuido.muerta);
+  const necesidadActiva = (m) => (muerta(m) ? 'muerta' : puedeCuidar(m) ? m.necesidad : '');
+  const puedeCuidar = (m) => !!m.necesidad && !m.atendida && m.etapa >= 1 && !evoPendiente(m) && !muerta(m);
   const MASCOTA_VIEWS = {
     main: (m) => {
       // Etapas ya alcanzadas se ven; las que faltan son un misterio (unknown) aunque las imagenes esten subidas
@@ -355,6 +379,7 @@
       <div class="space-y-5">
         ${resolve(MASCOTA_GROW, evoPendiente(m) ? 'si' : 'no', 'no')(m)}
         ${resolve(MASCOTA_ALERT, m.peligro ? 'si' : 'no', 'no')(m)}
+        ${resolve(MASCOTA_DESCUIDO, claveDescuido(m), 'nada')(m)}
         <div class="flex justify-center"><div class="flex items-center justify-center w-60 h-60 rounded-full mascota-halo">${MascotaImg(v, 'w-52 h-52', m.nombre + ', etapa ' + etapaNombre(v), necesidadActiva(m))}</div></div>
         <div class="grid gap-3 ${hayDiario ? 'grid-cols-2' : 'grid-cols-1'}">${acciones}</div>
         <ol class="flex gap-1 pt-2 border-t border-line" aria-label="Etapas">${steps}</ol>
@@ -799,12 +824,18 @@
     resta: () => RuleGroup('resta')
   };
   const RulesGrid = () => resolve(RULES_GRID, hayReglas('suma') && hayReglas('resta') ? 'dos' : hayReglas('suma') ? 'suma' : 'resta', 'dos')();
+  // Aviso fijo para los ninos: la mascota muere si nadie la cuida
+  const INFO_MASCOTA = {
+    si: () => MASCOTA_DESCUIDO.bien(S.mascota),
+    no: () => ''
+  };
   const REGLAS_BODY = {
     lleno: () => `
       <div class="space-y-5">
         ${SectionIndex()}
         ${RulesGrid()}
         ${InfoRacha()}
+        ${resolve(INFO_MASCOTA, S.mascota && S.mascota.descuido && S.mascota.descuido.limite ? 'si' : 'no', 'no')()}
         ${BadgeLegend()}
       </div>`,
     vacio: () => renderEmpty('sinReglas')
@@ -902,7 +933,7 @@
     personalizar: ({ premio, saldo }) => (premio.coste <= saldo ? 'available' : 'preview'),
     mascota: (props) => {
       const m = S.mascota;
-      if (!m) return 'inactiva';
+      if (!m || muerta(m)) return 'inactiva';
       if (m.atendida) return 'atendida';
       if (m.necesidad !== props.premio.efecto.slice(8)) return 'noNecesita';
       return enough(props);
@@ -919,12 +950,47 @@
     return resolve(PRIZE_CARDS, getPrizeState(props), 'locked')(props);
   }
 
+  // Favoritos: premio que este alumno ha canjeado 2 o mas veces. Se guarda en este iPad (el TPV es unico), sin tocar la hoja.
+  const FAV_KEY = 'tp_favs_v1';
+  const FAV_MIN = 2;
+  const FAV_EXCLUIDOS = { nombre: true, estrella: true };   // premios de una sola vez o diarios: no tiene sentido destacarlos
+  const registrarFavorito = (alumnoId, premioId) => {
+    const f = store.get(FAV_KEY, {});
+    f[alumnoId] = f[alumnoId] || {};
+    f[alumnoId][premioId] = (f[alumnoId][premioId] || 0) + 1;
+    store.set(FAV_KEY, f);
+  };
+  function favoritoDe(alumnoId, premios) {
+    const c = store.get(FAV_KEY, {})[alumnoId] || {};
+    let mejor = null;
+    premios.forEach((p) => { if (!FAV_EXCLUIDOS[efectoKey(p.efecto)] && (c[p.id] || 0) >= FAV_MIN && (!mejor || c[p.id] > c[mejor.id])) mejor = p; });
+    return mejor;
+  }
+  // Tres tramos de precio (sin partir premios que cuestan lo mismo). Con pocos premios no se separan.
+  function tramosDePrecio(premios) {
+    const orden = [...premios].sort((x, y) => x.coste - y.coste || x.nombre.localeCompare(y.nombre, 'es'));
+    if (orden.length < 4) return [{ clave: 'todos', premios: orden }];
+    const n = Math.ceil(orden.length / 3);
+    const corte = (i) => { while (i < orden.length && i > 0 && orden[i].coste === orden[i - 1].coste) i++; return i; };
+    const a = corte(n), b = corte(Math.max(a, 2 * n));
+    return [{ clave: 'baratos', premios: orden.slice(0, a) }, { clave: 'medios', premios: orden.slice(a, b) }, { clave: 'caros', premios: orden.slice(b) }].filter((g) => g.premios.length);
+  }
+  const PRIZE_GROUP_HEAD = {
+    fav: () => `<h3 class="flex items-center gap-2 mb-3 text-2xl font-bold">${Icon('favorite', 'text-3xl text-primary', true)}<span>Tu favorito</span></h3>`,
+    baratos: () => `<h3 class="flex items-center gap-2 mb-3 text-2xl font-bold">${Icon('sell', 'text-3xl text-ink-soft')}<span>Baratos</span></h3>`,
+    medios: () => `<h3 class="flex items-center gap-2 mb-3 text-2xl font-bold">${Icon('sell', 'text-3xl text-ink-soft')}<span>Medios</span></h3>`,
+    caros: () => `<h3 class="flex items-center gap-2 mb-3 text-2xl font-bold">${Icon('sell', 'text-3xl text-ink-soft')}<span>Caros</span></h3>`,
+    todos: () => ''
+  };
   function PrizeGrid({ premios, saldo }) {
-    const cards = [...premios]
-      .sort((x, y) => x.coste - y.coste || x.nombre.localeCompare(y.nombre, 'es')) // del mas barato al mas caro, siempre igual
-      .map((premio) => renderPrize({ premio, saldo }))
-      .join('');
-    return `<div class="grid-fit grid-fit-lg gap-5">${cards}</div>`;
+    const a = findAlumno(S.sel);
+    const fav = a ? favoritoDe(a.id, premios) : null;
+    const grupos = (fav ? [{ clave: 'fav', premios: [fav] }] : []).concat(tramosDePrecio(premios.filter((p) => !fav || p.id !== fav.id)));
+    return grupos.map((g) => `
+      <div class="mb-8">
+        ${resolve(PRIZE_GROUP_HEAD, g.clave, 'todos')()}
+        <div class="grid-fit grid-fit-lg gap-5">${g.premios.map((premio) => renderPrize({ premio, saldo })).join('')}</div>
+      </div>`).join('');
   }
   const PRIZE_LISTS = { lista: PrizeGrid, vacio: () => renderEmpty('sinPremios') };
   const renderPrizes = ({ premios, saldo }) =>
@@ -941,12 +1007,28 @@
       </div>`,
     no: () => ''
   };
+  const posCola = (id) => (S.cola || []).findIndex((c) => c.id === id);
+  const COLA_CTA = {
+    fuera: () => `<button type="button" data-cola-entrar class="${btnClass('primary', 'w-full text-xl')}">${Icon('format_list_numbered', 'text-3xl')}<span>Ponerme en la cola</span></button>`,
+    dentro: (pos) => `
+      <div class="flex items-center gap-3">
+        <p class="flex-1 flex items-center gap-2 text-xl font-bold text-primary">${Icon('hourglass_top', 'text-3xl', true)}<span>${pos === 0 ? 'Eres el siguiente' : `Estás en la cola: turno ${pos + 1}`}</span></p>
+        <button type="button" data-cola-salir class="${btnClass('outline', 'shrink-0 text-lg border-2')}">${Icon('close', 'text-2xl')}<span>Salir</span></button>
+      </div>`
+  };
   const TPV_CARD = {
-    aviso: () => `
-      <button type="button" data-tpv-clave class="pressable flex items-center gap-4 p-6 mx-6 max-w-xl text-left rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
-        <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
-        <span class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</span>
-      </button>`,
+    aviso: () => {
+      const a = findAlumno(S.sel);
+      const pos = a ? posCola(a.id) : -1;
+      return `
+      <div class="flex flex-col gap-4 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
+        <button type="button" data-tpv-clave class="pressable flex items-center gap-4 text-left">
+          <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
+          <span class="text-2xl font-bold">Pide a tu profe que te desbloquee para canjear.</span>
+        </button>
+        ${resolve(COLA_CTA, pos >= 0 ? 'dentro' : 'fuera', 'fuera')(pos)}
+      </div>`;
+    },
     clave: () => `
       <form data-tpv-form class="flex items-center gap-3 p-6 mx-6 max-w-xl rounded-ui-lg bg-surface border-2 border-attention shadow-xl">
         <span class="text-attention">${Icon('lock', 'text-5xl')}</span>
@@ -955,6 +1037,16 @@
         <button type="button" data-tpv-cancel aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft">${Icon('close', 'text-3xl')}</button>
       </form>`
   };
+  async function colaAccion(accion) {
+    const a = findAlumno(S.sel);
+    if (!a || busy) return;
+    busy = true;
+    try {
+      const res = await apiPost({ action: 'cola_' + accion, batchId: batchFor(`cola|${accion}|${a.id}`), alumnoId: a.id });
+      batchDone(); applyServer(res); persist();
+    } catch (err) { toast(`No se ha podido (${err.message})`, 'err'); }
+    finally { busy = false; render(); }
+  }
   async function abrirManual(valor) {
     if (String(valor).trim().toUpperCase() !== CLAVE_TPV) { toast('Contraseña incorrecta', 'err'); return; }
     const a = findAlumno(S.sel);
@@ -991,6 +1083,14 @@
     return renderEmpty('sinAlumnos');
   }
 
+  const COLA_LISTA = {
+    si: () => `
+      <div class="flex flex-wrap items-center gap-3 p-4 mb-6 rounded-ui-lg bg-surface-alt border border-line" aria-label="Cola del TPV">
+        <span class="flex items-center gap-2 text-lg font-bold">${Icon('format_list_numbered', 'text-3xl text-primary')}Esperando turno</span>
+        ${S.cola.map((c, i) => `<span class="inline-flex items-center gap-2 px-3 h-10 rounded-full bg-surface border border-line text-lg"><strong class="tabular-nums">${i + 1}</strong>${esc(c.nombre)}</span>`).join('')}
+      </div>`,
+    no: () => ''
+  };
   function StepElegirAlumno() {
     const buttons = [...S.alumnos]
       .sort(byName)
@@ -1006,12 +1106,18 @@
       <section>
         <h2 class="text-3xl font-bold">¿Quién eres?</h2>
         <p class="mt-1 mb-6 text-ink-soft">Toca tu nombre.</p>
+        ${resolve(COLA_LISTA, (S.cola || []).length ? 'si' : 'no', 'no')()}
         <div class="grid-fit grid-fit-md gap-4">${buttons}</div>
       </section>`;
   }
 
+  const SIGUIENTE_PREMIO = {
+    si: (p, falta) => `<p class="flex items-center gap-2 text-ink-soft">${Icon('flag', 'text-2xl')}<span>Te faltan <strong class="text-ink">${falta}</strong> puntos para <strong class="text-ink">${esc(p.nombre)}</strong></span></p>`,
+    no: () => ''
+  };
   function StepElegirPremio() {
     const a = findAlumno(S.sel);
+    const proximo = S.premios.filter((p) => p.coste > a.puntos && ['ninguno', 'personalizar'].indexOf(efectoKey(p.efecto)) >= 0).sort((x, y) => x.coste - y.coste)[0];
     return `
       <section>
         <div class="flex items-center gap-4 p-4 mb-8 rounded-ui-lg border ${colorStyle(a.color).card}">
@@ -1019,9 +1125,11 @@
           <div class="flex-1 min-w-0">
             <p class="text-2xl font-bold truncate">${esc(a.nombre)}</p>
             <p class="flex items-center gap-2 text-ink-soft">Tienes ${Score({ value: a.puntos, size: 'text-2xl text-ink' })} puntos</p>
+            ${resolve(SIGUIENTE_PREMIO, proximo ? 'si' : 'no', 'no')(proximo, proximo ? proximo.coste - a.puntos : 0)}
           </div>
           <button type="button" data-change class="${btnClass('outline', 'shrink-0 text-xl border-2')}">${Icon('swap_horiz', 'text-3xl')}<span>Cambiar</span></button>
         </div>
+        ${resolve(TURNO_BARRA, isUnlocked() ? 'si' : 'no', 'no')()}
         ${resolve(ESTRELLAS_AVISO, (a.estrellasRecibidas || []).length ? 'si' : 'no', 'no')(a.estrellasRecibidas || [])}
         ${resolve(CUSTOM_PENDING, a.pendientes > 0 ? 'si' : 'no', 'no')()}
         <h2 class="text-3xl font-bold">Elige tu premio</h2>
@@ -1041,6 +1149,35 @@
   }
   const CanjePanel = () => resolve(CANJE_STEPS, getCanjeStep(), 'alumno')();
 
+  /* ---- Turno: tiempo maximo con el TPV y cierre por inactividad (el iPad es unico para todos) ---- */
+  const TURNO_MS = 120000;       // duracion del turno
+  const INACTIVO_MS = 45000;     // sin tocar nada: el TPV se cierra solo
+  const turno = { id: '', inicio: 0, ultimo: 0 };
+  const turnoRestante = () => (turno.id === S.sel ? Math.max(0, TURNO_MS - (Date.now() - turno.inicio)) : TURNO_MS);
+  const fmtMin = (ms) => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  const TURNO_BARRA = {
+    si: () => `
+      <div class="mb-6" aria-label="Tiempo de turno">
+        <div class="flex items-center justify-between mb-1 text-ink-soft"><span class="flex items-center gap-2">${Icon('timer', 'text-2xl')}Tu turno</span><span data-turno-txt class="tabular-nums font-bold text-ink">${fmtMin(turnoRestante())}</span></div>
+        <div class="h-3 rounded-full bg-surface-alt overflow-hidden"><div data-turno-bar class="h-full rounded-full bg-primary" style="width:${(turnoRestante() / TURNO_MS * 100).toFixed(1)}%"></div></div>
+      </div>`,
+    no: () => ''
+  };
+  document.addEventListener('pointerdown', () => { turno.ultimo = Date.now(); }, { capture: true, passive: true });
+  setInterval(() => {
+    const a = findAlumno(S.sel);
+    if (!a || !isUnlocked() || S.config.tpvBloqueo === false) { turno.id = ''; return; }
+    const ahora = Date.now();
+    if (turno.id !== a.id) { turno.id = a.id; turno.inicio = ahora; turno.ultimo = ahora; return; }
+    if (busy || custom || pideClave || document.querySelector('.sheet.open')) { turno.inicio += 1000; turno.ultimo += 1000; return; } // en pausa mientras hay una ventana abierta
+    const resto = TURNO_MS - (ahora - turno.inicio);
+    const txt = document.querySelector('[data-turno-txt]'), bar = document.querySelector('[data-turno-bar]');
+    if (txt) txt.textContent = fmtMin(Math.max(0, resto));
+    if (bar) { bar.style.width = Math.max(0, resto / TURNO_MS * 100).toFixed(1) + '%'; bar.classList.toggle('bg-attention', resto < 20000); bar.classList.toggle('bg-primary', resto >= 20000); }
+    if (resto <= 0) { toast('Se acabó tu turno. Si quieres, vuelve a pedirlo.', 'info'); cambiarAlumno(); }
+    else if (ahora - turno.ultimo >= INACTIVO_MS) { toast('El TPV se ha cerrado por inactividad.', 'info'); cambiarAlumno(); }
+  }, 1000);
+
   /* ---- Confirmacion ---- */
   function ConfirmBody({ a, p }) {
     return `
@@ -1048,8 +1185,9 @@
         <span class="flex items-center justify-center w-24 h-24 rounded-full bg-primary-soft text-primary">${Icon(UI_ICON(p.icono), 'text-6xl')}</span>
         <h2 id="dlg-title" class="text-3xl font-bold">¿Canjear ${esc(p.nombre)}?</h2>
         <ul class="w-full space-y-3 text-xl">
-          <li class="flex items-center justify-between"><span class="text-ink-soft">Cuesta</span>${Score({ value: p.coste, size: 'text-2xl' })}</li>
-          <li class="flex items-center justify-between"><span class="text-ink-soft">Te quedarán</span>${Score({ value: a.puntos - p.coste, size: 'text-2xl' })}</li>
+          <li class="flex items-center justify-between"><span class="text-ink-soft">Tienes</span>${Score({ value: a.puntos, size: 'text-2xl' })}</li>
+          <li class="flex items-center justify-between"><span class="text-ink-soft">Cuesta</span><span class="flex items-center gap-2 text-ink-soft">${Icon('remove', 'text-2xl')}${Score({ value: p.coste, size: 'text-2xl' })}</span></li>
+          <li class="flex items-center justify-between pt-3 border-t-2 border-line font-bold"><span>Te quedarán</span>${Score({ value: a.puntos - p.coste, size: 'text-3xl' })}</li>
         </ul>
         <div class="grid grid-cols-2 gap-4 w-full pt-2">
           ${noBtn()}
@@ -1364,6 +1502,7 @@
       batchDone();
       applyServer(res);                          // la verdad del servidor
       persist();
+      if (String(p.efecto).indexOf('mascota:') !== 0) registrarFavorito(alumnoId, p.id);
       setStatus(isDemo() ? 'demo' : 'ok');
       resolve(POST_REDEEM, efectoKey(p.efecto), 'ninguno')(alumnoId, p);
       render();
@@ -1483,6 +1622,8 @@
     ['[data-cuida-cambiar]', () => { cuidaSel = ''; renderMascota(); }],
     ['[data-cuida-go]', () => doCuidar()],
     ['[data-confirm]', () => doRedeem('confirm')],
+    ['[data-cola-entrar]', () => colaAccion('entrar')],
+    ['[data-cola-salir]', () => colaAccion('salir')],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],
     ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; estrellaSel.paso = 2; redrawDlg(); }],

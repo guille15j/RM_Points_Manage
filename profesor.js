@@ -37,7 +37,8 @@
     mascota: saved.mascota || null,
     estrellas: saved.estrellas || [],
     ayudante: saved.ayudante || null,
-    uso: saved.uso || {},           // veces que se ha usado cada motivo (ordena los favoritos del dock)
+    cola: [],                       // alumnos esperando el TPV (solo lectura, viene del servidor)
+    equilibrio: null,               // informe de equilibrio (solo lectura)
     uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
     cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
     pending: saved.pending || null, // {id,sig}: batchId del ultimo intento, para reintentos idempotentes
@@ -64,6 +65,7 @@
     if (res.ts && !vieja) lastTs = res.ts;
     if (!vieja) {
       ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
+      ['cola', 'equilibrio'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; });
       ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
     }
     aplicarAplicados(res.aplicados);
@@ -165,6 +167,7 @@
     espera: () => `<span class="flex items-center justify-center w-14 shrink-0 text-ink-soft">${Icon('hourglass_top', 'text-xl')}</span>`,
     no: () => ''
   };
+  const colaChip = (id) => { const i = (S.cola || []).findIndex((c) => c.id === id); return i < 0 ? '' : `<span class="inline-flex items-center gap-1 px-1.5 h-6 rounded-full bg-primary-soft text-primary text-xs font-bold" aria-label="En la cola, turno ${i + 1}">${Icon('format_list_numbered', 'text-base')}${i + 1}</span>`; };
   /* ---- Fila de alumno: seleccionada o en reposo ---- */
   const makeStudentRow = (icon, tone, pressed) => ({ a, sim }) => `
     <li class="flex items-stretch ${tone}">
@@ -172,6 +175,7 @@
       <button type="button" data-al="${esc(a.id)}" aria-pressed="${pressed}" class="pressable flex items-center flex-1 min-w-0 gap-3 pr-3 text-left min-h-[3.25rem]">
         ${Icon(icon, 'text-primary')}
         <span class="flex-1 min-w-0 font-medium truncate">${esc(a.nombre)}</span>
+        ${colaChip(a.id)}
         ${renderStreak(a)}
         ${resolve(PENDING_BADGES, getPendingKind(sim), 'none')(sim)}
         <span class="w-14 text-lg font-semibold text-right tabular-nums">${sim.now}</span>
@@ -408,7 +412,7 @@
     $('#motives').innerHTML = resolve(MOTIVES, reglas.length ? 'lista' : 'vacio', 'vacio')(reglas);
   }
   function renderMotiveSheet() {
-    const reglas = S.reglas.filter((r) => getMotiveKind(r) === mtab).sort((a, b) => Math.abs(b.puntos) - Math.abs(a.puntos));
+    const reglas = S.reglas.filter((r) => getMotiveKind(r) === mtab).sort((a, b) => (S.uso[b.id] || 0) - (S.uso[a.id] || 0) || Math.abs(b.puntos) - Math.abs(a.puntos));
     $('#motives-body').innerHTML = resolve(MOTIVE_SHEET, getMotiveSheetKind(), 'vacio')({ reglas, n: selected.size });
   }
 
@@ -478,7 +482,8 @@
 
   // Punto rojo en el boton: hay algo que revisar (estrellas) o la mascota esta en peligro
   const CLASE_DOT = { si: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.remove('hidden')), no: () => ['#clase-dot', '#clase-dot-mas'].forEach((s) => $(s).classList.add('hidden')) };
-  const hayAviso = () => pendientesEstrellas().length > 0 || !!(S.mascota && S.mascota.peligro);
+  const descuidoMal = () => !!(S.mascota && S.mascota.descuido && ['aviso', 'grave', 'muerta'].indexOf(S.mascota.descuido.estado) >= 0);
+  const hayAviso = () => pendientesEstrellas().length > 0 || !!(S.mascota && S.mascota.peligro) || descuidoMal() || (S.cola || []).length > 0;
   const renderClaseDot = () => resolve(CLASE_DOT, hayAviso() ? 'si' : 'no', 'no')();
 
   const queuedNote = (txt) => `<p class="flex items-center gap-2 text-sm text-ink-soft">${Icon('shopping_cart', 'text-xl')}<span>${txt}</span></p>`;
@@ -553,6 +558,52 @@
       </div>`,
     normal: () => `<button type="button" data-reset-ask class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-danger font-semibold">${Icon('restart_alt', 'text-xl')}Reiniciar desde el huevo</button>`
   };
+  /* ---- Cola del TPV ---- */
+  async function colaQuitar(id) {
+    if (tpvBusy.has(id)) return;
+    tpvBusy.add(id);
+    try {
+      const res = await apiPost({ action: 'cola_salir', origen: 'profesor', batchId: uid(), alumnoId: id });
+      applyServer(res); persist(); setStatus(isDemo() ? 'demo' : 'ok');
+    } catch (err) { setStatus('off'); toast(`No se ha podido (${err.message})`, 'err'); }
+    finally { tpvBusy.delete(id); render(); renderClase(); }
+  }
+  const COLA_SECCION = {
+    si: (cola) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('format_list_numbered', 'text-xl')}Cola del canje</h3>
+        <ul class="space-y-1.5">${cola.map((c, i) => `
+          <li class="flex items-center gap-2">
+            <span class="w-6 text-center font-bold tabular-nums text-ink-soft">${i + 1}</span>
+            <span class="flex-1 min-w-0 truncate font-medium">${esc(c.nombre)}</span>
+            <button type="button" data-cola-quitar="${esc(c.id)}" aria-label="Quitar de la cola" class="pressable flex items-center justify-center w-11 h-11 rounded-ui border border-line bg-surface text-ink-soft">${Icon('close', 'text-xl')}</button>
+            <button type="button" data-cola-abrir="${esc(c.id)}" class="pressable inline-flex items-center justify-center gap-1.5 h-11 px-3 rounded-ui bg-primary text-on-primary font-semibold">${Icon('lock_open', 'text-xl')}Desbloquear</button>
+          </li>`).join('')}</ul>
+      </section>`,
+    no: () => ''
+  };
+  /* ---- Equilibrio: quien ha recibido menos reconocimientos ---- */
+  const EQUILIBRIO = {
+    lleno: (e, bajos) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('balance', 'text-xl')}Equilibrio (últimas ${e.clases} ${e.clases === 1 ? 'clase' : 'clases'})</h3>
+        <p class="text-sm text-ink-soft">Reconocimientos recibidos por alumno. Estos han recibido menos que el resto:</p>
+        <ul class="space-y-1">${bajos.slice(0, 8).map((x) => `<li class="flex justify-between gap-2"><span class="truncate">${esc(x.nombre)}</span><span class="tabular-nums font-semibold">${x.reconocimientos}</span></li>`).join('')}</ul>
+        <button type="button" data-eq-sel class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui border border-line bg-surface text-ink font-semibold">${Icon('checklist', 'text-xl')}Seleccionar a estos alumnos</button>
+      </section>`,
+    ok: (e) => `<section class="space-y-1"><h3 class="flex items-center gap-2 font-semibold">${Icon('balance', 'text-xl')}Equilibrio</h3><p class="text-ink-soft">Todos han recibido reconocimientos parecidos en las últimas ${e.clases} clases.</p></section>`,
+    vacio: () => ''
+  };
+  const bajosEquilibrio = () => ((S.equilibrio && S.equilibrio.lista) || []).filter((x) => x.bajo);
+  /* ---- Descuido de la mascota ---- */
+  const DESCUIDO = {
+    muerta: (m) => `<p class="p-3 rounded-ui bg-danger/10 text-danger font-semibold">${esc(m.nombre)} ha muerto: ${m.descuido.limite} clases seguidas sin cuidarla.</p>${enCarrito.masc('revivir') ? queuedNote('Revivir en el carrito. Se aplicará al enviar.') : `<button type="button" data-revivir class="pressable inline-flex items-center justify-center gap-2 w-full h-tap rounded-ui bg-primary text-on-primary font-semibold">${Icon('favorite', 'text-xl', true)}Revivir a ${esc(m.nombre)}</button>`}`,
+    grave: (m) => `<p class="p-3 rounded-ui bg-attention-soft text-attention font-semibold">Última oportunidad: ${m.descuido.perdidas} clases sin cuidar a ${esc(m.nombre)}. Si falta la próxima, muere.</p>`,
+    aviso: (m) => `<p class="p-3 rounded-ui bg-attention-soft text-attention font-semibold">${m.descuido.perdidas} ${m.descuido.perdidas === 1 ? 'clase' : 'clases'} sin cuidar a ${esc(m.nombre)}. Muere a las ${m.descuido.limite}.</p>`,
+    bien: () => '',
+    nada: () => ''
+  };
+  const claveDescuido = (m) => (!m.descuido || !m.descuido.limite ? 'nada' : m.descuido.estado);
   const PELIGRO = {
     si: (m) => `<p class="p-3 rounded-ui bg-danger/10 text-danger font-semibold">${esc(m.nombre)} está en peligro: las restas superan lo que ha ganado (${m.deuda}). La clase puede recuperarla sumando, o puedes reiniciarla.</p>`,
     no: () => ''
@@ -573,6 +624,7 @@
         <h3 class="flex items-center gap-2 font-semibold">${Icon('pets', 'text-xl')}${esc(m.nombre)}</h3>
         <p class="text-ink-soft">Etapa ${m.etapa + 1} de ${m.etapas} · ${m.puntos} puntos${m.maxima ? ' · máxima' : ''}</p>
         ${resolve(PELIGRO, m.peligro ? 'si' : 'no', 'no')(m)}
+        ${resolve(DESCUIDO, claveDescuido(m), 'nada')(m)}
         ${resolve(RESET_BTN, enCarrito.masc('reiniciar') ? 'enCarrito' : confirmReset ? 'pide' : 'normal', 'normal')()}
       </section>
       ${resolve(VOTACION, m.votacion && m.votacion.estado === 'abierta' ? 'abierta' : 'otro', 'otro')(m.votacion)}`,
@@ -582,10 +634,13 @@
     const pts = (S.config && S.config.ayudantePuntos) || 2;
     const ept = (S.config && S.config.estrellaPuntos) || 2;
     const est = S.estrellas || [];
+    const bajos = bajosEquilibrio();
     $('#clase-body').innerHTML =
+      resolve(COLA_SECCION, (S.cola || []).length ? 'si' : 'no', 'no')(S.cola || []) +
       resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
       resolve(ESTRELLAS, est.length ? 'lleno' : 'vacio', 'vacio')(est, ept) +
-      resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota);
+      resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota) +
+      resolve(EQUILIBRIO, !S.equilibrio || !S.equilibrio.clases ? 'vacio' : bajos.length ? 'lleno' : 'ok', 'vacio')(S.equilibrio, bajos);
   }
   function openClase() {
     confirmReset = false;
@@ -607,6 +662,28 @@
     render();
     toast(msg, 'ok');
   }
+
+  /* ======================= CALENDARIO: dias sin clase ======================= */
+  const fmtDia = (d) => d.split('-').reverse().join('/');
+  const CAL_LISTA = {
+    lleno: (dias) => `<ul class="space-y-1.5">${dias.map((d) => `<li class="flex items-center gap-2"><span class="flex-1 font-medium tabular-nums">${fmtDia(d)}</span><button type="button" data-dia-quitar="${d}" aria-label="Quitar ${fmtDia(d)}" class="pressable flex items-center justify-center w-11 h-11 rounded-ui border border-line bg-surface text-ink-soft">${Icon('close', 'text-xl')}</button></li>`).join('')}</ul>`,
+    vacio: () => `<p class="text-ink-soft">No hay días sin clase marcados.</p>`
+  };
+  const diasSinClase = () => (S.config && S.config.diasSinClase) || [];
+  function renderCal() {
+    const dias = diasSinClase();
+    $('#cal-lista').innerHTML = resolve(CAL_LISTA, dias.length ? 'lleno' : 'vacio', 'vacio')(dias);
+  }
+  async function guardarDias(dias) {
+    if (calBusy) return;
+    calBusy = true;
+    try {
+      const res = await apiPost({ action: 'dias_sin_clase', batchId: uid(), dias });
+      applyServer(res); persist(); setStatus(isDemo() ? 'demo' : 'ok'); toast('Calendario guardado', 'ok');
+    } catch (err) { setStatus('off'); toast(`No se ha guardado (${err.message})`, 'err'); }
+    finally { calBusy = false; renderCal(); render(); }
+  }
+  let calBusy = false;
 
   /* ======================= 5. ACCIONES ======================= */
   function toggleStudent(id) {
@@ -886,6 +963,13 @@
     ['[data-tpv]', (el) => tpvToggle(el.dataset.tpv, el.dataset.to)],
     ['#btn-tpv-sel', () => { closeSheet('sheet-mas'); tpvMulti([...selected], 'abrir'); }],
     ['#btn-tpv-all', () => { closeSheet('sheet-mas'); tpvMulti(S.alumnos.map((a) => a.id), 'cerrar'); }],
+    ['[data-cola-abrir]', (el) => tpvToggle(el.dataset.colaAbrir, 'abrir').then(() => renderClase())],
+    ['[data-cola-quitar]', (el) => colaQuitar(el.dataset.colaQuitar)],
+    ['[data-revivir]', () => { if (!enCarrito.masc('revivir')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'revivir', nota: 'Revivir la mascota' }, 'Añadido al carrito'); renderClase(); }],
+    ['[data-eq-sel]', () => { selected.clear(); bajosEquilibrio().forEach((x) => selected.add(x.id)); closeSheet('sheet-clase'); renderList(); toast(`${selected.size} seleccionados`, 'ok'); }],
+    ['#btn-cal', () => { closeSheet('sheet-mas'); renderCal(); openSheet('sheet-cal'); }],
+    ['[data-dia-quitar]', (el) => guardarDias(diasSinClase().filter((d) => d !== el.dataset.diaQuitar))],
+    ['#dia-add', () => { const v = $('#dia-input').value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return toast('Elige una fecha', 'info'); if (diasSinClase().indexOf(v) >= 0) return toast('Ese día ya está marcado', 'info'); $('#dia-input').value = ''; guardarDias(diasSinClase().concat(v)); }],
     ['[data-est-undo]', (el) => { S.cart = S.cart.filter((c) => !(c.tipo === 'estrella_res' && c.ref === el.dataset.estUndo)); persist(); render(); renderClase(); }],
     ['[data-est-ok]', (el) => estrellaCarrito(el.dataset.estOk, true)],
     ['[data-est-no]', (el) => estrellaCarrito(el.dataset.estNo, false)],

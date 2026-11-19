@@ -79,6 +79,10 @@ const Engine = (function () {
 
   const DEFAULTS = {
     dias_clase: '2,4',
+    dias_sin_clase: '',
+    mascota_muerte: 3,
+    mascota_muerte_desde: '',
+    equilibrio_clases: 4,
     insignia_dias: 7,
     racha_hito: 5,
     racha_bonus: 10,
@@ -150,8 +154,17 @@ const Engine = (function () {
     const bonus = list(g('ruleta_bonus')).map(Number).filter((n) => Number.isInteger(n) && n > 0);
     let diasClase = str(g('dias_clase')).split(/[,;.\s]+/).filter(Boolean).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7);
     if (!diasClase.length) diasClase = [2, 4];
+    // Dias sin clase (festivos, excursiones...): fechas AAAA-MM-DD separadas por coma. No cuentan como clase para rachas, mascota ni informes.
+    const excl = {};
+    const vsc = g('dias_sin_clase');
+    (isDate(vsc) ? (isNaN(vsc.getTime()) ? '' : vsc.getFullYear() + '-' + ('0' + (vsc.getMonth() + 1)).slice(-2) + '-' + ('0' + vsc.getDate()).slice(-2)) : str(vsc)).split(/[,;\s]+/).forEach((d) => { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) excl[d] = true; });
+    diasClase.excl = excl;
     return {
       diasClase,
+      diasSinClase: Object.keys(excl).sort(),
+      mascotaMuerte: Math.max(0, int(g('mascota_muerte'), 3)),
+      mascotaMuerteDesde: g('mascota_muerte_desde'),   // opcional: solo cuentan las clases posteriores a esta fecha
+      equilibrioClases: Math.max(1, int(g('equilibrio_clases'), 4)),
       insigniaDias: Math.max(1, int(g('insignia_dias'), 7)),
       rachaHito: Math.max(1, int(g('racha_hito'), 5)),
       rachaBonus: Math.max(0, int(g('racha_bonus'), 10)),
@@ -184,6 +197,17 @@ const Engine = (function () {
     return bal;
   }
 
+  /** Es dia de clase: su dia de la semana esta en dias_clase y no figura en dias_sin_clase. */
+  const esDiaClase = (key, diasClase) => diasClase.indexOf(isoDow(key)) >= 0 && !(diasClase.excl && diasClase.excl[key]);
+  /** Dias de clase hacia atras desde 'desde' (incluido si lo es). Maximo 'max' dias de calendario. */
+  function clasesHaciaAtras(desde, diasClase, max) {
+    const n = dayNum(desde), out = [];
+    for (let i = 0; i < (max || 120); i++) {
+      const key = new Date((n - i) * 86400000).toISOString().slice(0, 10);
+      if (esDiaClase(key, diasClase)) out.push(key);
+    }
+    return out;
+  }
   /** Dias de clase (solo los dias de la semana de dias_clase) y neto diario por alumno. */
   function dayTables(led, ctx, diasClase) {
     const days = {};
@@ -192,7 +216,7 @@ const Engine = (function () {
     led.forEach((m) => {
       if (TIPOS_RACHA.indexOf(m.tipo) < 0) return;
       const d = toDay(m.fecha, ctx);
-      if (!d || diasClase.indexOf(isoDow(d)) < 0) return;
+      if (!d || !esDiaClase(d, diasClase)) return;
       days[d] = true;
       const id = str(m.alumnoId);
       net[id] = net[id] || {};
@@ -299,9 +323,9 @@ const Engine = (function () {
   /** Dia de clase mas reciente (hoy incluido). */
   function ultimaClase(hoy, diasClase) {
     const n = dayNum(hoy);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 60; i++) {
       const key = new Date((n - i) * 86400000).toISOString().slice(0, 10);
-      if (diasClase.indexOf(isoDow(key)) >= 0) return key;
+      if (esDiaClase(key, diasClase)) return key;
     }
     return hoy;
   }
@@ -355,9 +379,9 @@ const Engine = (function () {
   /** Clase anterior a hoy (estrictamente antes): jueves -> martes, martes -> jueves pasado. */
   function claseAnterior(hoy, diasClase) {
     const n = dayNum(hoy);
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 1; i <= 60; i++) {
       const key = new Date((n - i) * 86400000).toISOString().slice(0, 10);
-      if (diasClase.indexOf(isoDow(key)) >= 0) return key;
+      if (esDiaClase(key, diasClase)) return key;
     }
     return '';
   }
@@ -460,6 +484,71 @@ const Engine = (function () {
     return { progreso: p, etapa, deuda, diario };
   }
 
+  /**
+   * Descuido de la mascota: clases ya terminadas, seguidas, sin que nadie la cuide (desde que salio del huevo o desde el ultimo 'revivir').
+   * Al llegar a mascota_muerte clases (0 = nunca) muere hasta que el profesor la revive. La clase de hoy no cuenta hasta que acaba.
+   */
+  function descuidoMascota(led, items, ctx, c, pm) {
+    const limite = c.mascotaMuerte;
+    const base = { perdidas: 0, limite, restantes: limite, estado: 'bien', muerta: false };
+    if (!limite || pm.etapa < 1) return base;
+    const hoy = ctx.fmtDay(ctx.now);
+    let corte = '';
+    let reinicio = -1;
+    pm.diario.forEach((d, i) => { if (d.tipo === 'reinicio') reinicio = i; });
+    pm.diario.forEach((d, i) => { if (i > reinicio && d.tipo === 'crecio' && d.etapa >= 1 && !corte) corte = d.dia || ''; });
+    const md = c.mascotaMuerteDesde ? toDay(c.mascotaMuerteDesde, ctx) : '';
+    if (md && md > corte) corte = md;
+    led.forEach((m) => { if (m.tipo === 'mascota' && (str(m.ref) === 'revivir' || str(m.ref) === 'reset')) { const d = toDay(m.fecha, ctx); if (d > corte) corte = d; } });
+    const ef = efectoDe(items);
+    const cuidados = {};
+    led.forEach((m) => { if (m.tipo === 'canje' && accionDe(ef[str(m.ref)])) cuidados[toDay(m.fecha, ctx)] = true; });
+    let perdidas = 0;
+    const dias = clasesHaciaAtras(hoy, c.diasClase, 120).filter((d) => d < hoy && d > corte);
+    for (let i = 0; i < dias.length; i++) {
+      if (cuidados[dias[i]]) break;
+      perdidas++;
+    }
+    const muerta = perdidas >= limite;
+    const estado = muerta ? 'muerta' : perdidas >= limite - 1 && perdidas > 0 ? 'grave' : perdidas > 0 ? 'aviso' : 'bien';
+    return { perdidas, limite, restantes: Math.max(0, limite - perdidas), estado, muerta };
+  }
+  /** Cola del TPV: alumnos esperando, en orden de llegada. Salen al ser desbloqueados, al canjear/enviar estrella o al irse. */
+  function colaTpv(led) {
+    let cola = [];
+    const quita = (id) => { cola = cola.filter((x) => x !== id); };
+    led.forEach((r) => {
+      const id = str(r.alumnoId);
+      if (r.tipo === 'cola') { if (str(r.ref) === 'entrar') { if (cola.indexOf(id) < 0) cola.push(id); } else quita(id); }
+      else if (r.tipo === 'tpv' && str(r.ref) === 'abrir') quita(id);
+      else if (r.tipo === 'canje') quita(id);
+      else if (r.tipo === 'estrella') quita(str(r.ref));
+    });
+    return cola;
+  }
+  /** Informe de equilibrio: reconocimientos (puntos positivos del profesor) por alumno en las ultimas N clases. */
+  function equilibrioClase(led, ctx, c, alumnosAct) {
+    const hoy = ctx.fmtDay(ctx.now);
+    const dias = clasesHaciaAtras(hoy, c.diasClase, 120).slice(0, c.equilibrioClases);
+    const set = {};
+    dias.forEach((d) => (set[d] = true));
+    const rec = {}, pts = {}, ult = {};
+    led.forEach((m) => {
+      if (TIPOS_GANADOS.indexOf(m.tipo) < 0 || Number(m.delta) <= 0) return;
+      const id = str(m.alumnoId), d = toDay(m.fecha, ctx);
+      if (!d) return;
+      if (!ult[id] || d > ult[id]) ult[id] = d;
+      if (set[d]) { rec[id] = (rec[id] || 0) + 1; pts[id] = (pts[id] || 0) + Number(m.delta); }
+    });
+    const cuentas = alumnosAct.map((a) => rec[str(a.id)] || 0).sort((x, y) => x - y);
+    const mediana = cuentas.length ? cuentas[Math.floor(cuentas.length / 2)] : 0;
+    const lista = alumnosAct.map((a) => {
+      const n = rec[str(a.id)] || 0;
+      return { id: str(a.id), nombre: str(a.nombre), reconocimientos: n, puntos: pts[str(a.id)] || 0, ultimo: ult[str(a.id)] || '', bajo: n === 0 || n * 2 < mediana };
+    }).sort((x, y) => x.reconocimientos - y.reconocimientos || x.nombre.localeCompare(y.nombre, 'es'));
+    return { clases: dias.length, desde: dias.length ? dias[dias.length - 1] : '', mediana, lista };
+  }
+
   /* ---------- Estado que ve el frontend (respuesta de GET) ---------- */
   function computeState(t, ctx) {
     const c = readConfig(t.config);
@@ -538,6 +627,7 @@ const Engine = (function () {
         desde: th[etapa], hasta: maxima ? null : th[etapa + 1], falta: maxima ? 0 : th[etapa + 1] - pm.progreso, maxima,
         peligro: pm.deuda > 0, deuda: pm.deuda,
         necesidad: nec.accion, atendida: nec.atendida,
+        descuido: descuidoMascota(led, items, ctx, c, pm),
         votacion: { estado: vot.estado, opciones: vot.opciones, votos: vot.votos, votantes: vot.votantes, total: vot.total },
         diario
       };
@@ -568,11 +658,13 @@ const Engine = (function () {
       insignias: activeItems.filter((i) => i.tipo === 'insignia').map((i) => Object.assign(view(i), { desbloquea: unlocks[str(i.id)] || [] })),
       reto,
       mascota,
+      cola: colaTpv(led).map((id) => { const a = alumnosAct.find((x) => str(x.id) === id); return a ? { id, nombre: str(a.nombre) } : null; }).filter(Boolean),
+      equilibrio: equilibrioClase(led, ctx, c, alumnosAct),
       estrellas,
       ayudante: ay ? { id: str(ay.id), nombre: str(ay.nombre) } : null,
       config: {
         rachaHito: c.rachaHito, rachaBonus: c.rachaBonus, ruletaBonus: c.ruletaBonus, avatares: c.avatares, colores: c.colores,
-        diasClase: c.diasClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos, tpvBloqueo: c.tpvBloqueo
+        diasClase: c.diasClase, diasSinClase: c.diasSinClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos, tpvBloqueo: c.tpvBloqueo
       },
       ts: ctx.now.toISOString()
     };
@@ -606,6 +698,7 @@ const Engine = (function () {
     const rows = [];
     const patches = [];
     const bonificaciones = [];
+    let configSet = null;   // cambio de una clave de la pestana Config (solo dias_sin_clase)
     const add = (alumnoId, tipo, delta, nota, origen, ref) => {
       rows.push({
         id: ctx.uuid(), fecha: ctx.now, batchId: str(p.batchId), alumnoId, tipo,
@@ -637,6 +730,11 @@ const Engine = (function () {
     const doMascota = (accion) => {
       if (accion === 'reiniciar') {
         add('', 'mascota', 0, 'Reinicio de la mascota', 'profesor', 'reset');
+      } else if (accion === 'revivir') {
+        if (!c.mascotaActiva) throw new Error('La mascota no está activa');
+        const pm = progresoMascota(cur(), items, ctx, c, activos);
+        if (!descuidoMascota(cur(), items, ctx, c, pm).muerta) throw new Error('La mascota no ha muerto');
+        add('', 'mascota', 0, 'La mascota ha sido revivida', 'profesor', 'revivir');
       } else if (accion === 'cerrar_nombre') {
         const vot = votacionNombre(cur(), items, (t.alumnos || []).filter(isActivo), c);
         if (vot.estado !== 'abierta') throw new Error('No hay una votación abierta');
@@ -678,6 +776,19 @@ const Engine = (function () {
       const id = alumnoValido(p.alumnoId);
       const abrir = p.action === 'tpv_abrir';
       if (!!tpvAbiertos(cur(), items)[id] !== abrir) add(id, 'tpv', 0, abrir ? 'Canje desbloqueado' : 'Canje bloqueado', abrir ? 'profesor' : 'tpv', abrir ? 'abrir' : 'cerrar');
+    } else if (p.action === 'dias_sin_clase') {
+      const dias = (Array.isArray(p.dias) ? p.dias : []).map((d) => str(d).trim()).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      configSet = { clave: 'dias_sin_clase', valor: dias.filter((d, i) => dias.indexOf(d) === i).sort().join(',') };
+    } else if (p.action === 'cola_entrar' || p.action === 'cola_salir') {
+      const id = alumnoValido(p.alumnoId);
+      const dentro = colaTpv(cur()).indexOf(id) >= 0;
+      if (p.action === 'cola_entrar') {
+        if (c.tpvBloqueo && tpvAbiertos(cur(), items)[id]) throw new Error('Ya estás desbloqueado');
+        if (dentro) throw new Error('Ya estás en la cola');
+        add(id, 'cola', 0, 'Se pone en la cola', 'tpv', 'entrar');
+      } else if (dentro) {
+        add(id, 'cola', 0, 'Sale de la cola', p.origen === 'profesor' ? 'profesor' : 'tpv', 'salir');
+      }
     } else if (p.action === 'canje') {
       const id = alumnoValido(p.alumnoId);
       const premio = items.filter((i) => (i.tipo === 'premio' || i.tipo === 'cuidado') && isActivo(i) && str(i.id) === str(p.premioId))[0];
@@ -690,6 +801,7 @@ const Engine = (function () {
       let nota = str(premio.nombre);
       if (accionDe(efecto)) {
         if (!c.mascotaActiva) throw new Error('La mascota no está activa');
+        if (descuidoMascota(cur(), items, ctx, c, progresoMascota(cur(), items, ctx, c, activos)).muerta) throw new Error('La mascota ha muerto. Pide a tu profe que la reviva');
         const nec = necesidadMascota(led, items, ctx, c);
         if (nec.atendida) throw new Error('La mascota ya está atendida en esta clase');
         if (nec.accion !== accionDe(efecto)) throw new Error('La mascota no necesita esto ahora');
@@ -757,7 +869,7 @@ const Engine = (function () {
       });
     }
 
-    return { rows, patches, bonificaciones, duplicado: false };
+    return { rows, patches, bonificaciones, duplicado: false, configSet };
   }
 
   return { computeState, applyAction, COLORES, AVATARES, COSMETICOS, DEFAULTS };

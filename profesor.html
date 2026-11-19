@@ -132,6 +132,7 @@
         <button id="btn-badge" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">military_tech</span><span>Insignia</span></button>
         <button id="btn-clase" type="button" aria-label="Mascota, ayudante y estrellas" class="pressable relative inline-flex items-center justify-center gap-1.5 h-11 rounded-ui border border-line bg-surface text-ink font-semibold"><span class="icon text-xl">pets</span><span>Mascota</span><span id="clase-dot" class="hidden absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-danger"></span></button>
         <button type="button" data-q="reset" class="pressable h-11 flex flex-row gap-3 items-center justify-center rounded-ui border border-line bg-surface text-ink-soft"><span class="icon text-xl">restart_alt</span><span class="font-semibold">A cero</span></button>
+        <button id="btn-cal" type="button" class="pressable flex items-center gap-3 w-full h-14 px-4 rounded-ui border border-line bg-surface text-ink"><span class="icon text-xl">event_busy</span><span class="font-semibold">Días sin clase</span></button>
         <button id="btn-tpv-sel" type="button" class="pressable flex items-center gap-3 w-full h-14 px-4 rounded-ui border border-line bg-surface text-ink"><span class="icon text-xl">lock_open</span><span class="font-semibold">Desbloquear canje a los seleccionados</span></button>
         <button id="btn-tpv-all" type="button" class="pressable flex items-center gap-3 w-full h-14 px-4 rounded-ui border border-line bg-surface text-ink"><span class="icon text-xl">lock</span><span class="font-semibold">Bloquear el canje a todos</span></button>
       </div>
@@ -147,6 +148,25 @@
         <button type="button" data-close="sheet-clase" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
       </div>
       <div id="clase-body" class="flex-1 overflow-y-auto px-3 py-3 space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Hoja: dias sin clase (festivos, excursiones): no cuentan para rachas, mascota ni equilibrio -->
+  <div id="sheet-cal" class="sheet items-end justify-center" role="dialog" aria-modal="true" aria-label="Días sin clase">
+    <div class="sheet-bg" data-close="sheet-cal"></div>
+    <div class="sheet-panel flex flex-col w-full max-h-[85dvh] bg-surface rounded-t-ui-lg border-t border-line" style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="flex items-center pl-4 pr-1 h-tap border-b border-line">
+        <h2 class="flex-1 font-semibold">Días sin clase</h2>
+        <button type="button" data-close="sheet-cal" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui text-ink-soft"><span class="icon">close</span></button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+        <p class="text-sm text-ink-soft">Festivos o excursiones. Ese día no cuenta como clase para rachas, mascota ni equilibrio.</p>
+        <div class="flex gap-2">
+          <input id="dia-input" type="date" aria-label="Fecha sin clase" class="min-w-0 flex-1 h-tap px-3 rounded-ui border border-line bg-page text-ink outline-none focus:border-primary">
+          <button id="dia-add" type="button" class="pressable inline-flex items-center justify-center gap-1.5 h-tap px-4 rounded-ui bg-primary text-on-primary font-semibold"><span class="icon text-xl">add</span>Añadir</button>
+        </div>
+        <div id="cal-lista"></div>
+      </div>
     </div>
   </div>
 

@@ -51,7 +51,7 @@
   };
 
   /** Escoge y devuelve del estado solo lo que pinta la interfaz (para comparar y guardar). */
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config', 'cola', 'equilibrio'];
   const pickState = (r) => STATE_KEYS.reduce((o, k) => ((o[k] = r[k] === undefined ? null : r[k]), o), {});
 
   /* ---------- Red ---------- */
@@ -122,6 +122,10 @@
         if (a) { a.avatar = p.avatar; a.color = p.color; }
       });
       t.movimientos.push(...res.rows);
+      if (res.configSet) {
+        const fila = (t.config || []).find((r) => String(r.clave) === res.configSet.clave);
+        if (fila) fila.valor = res.configSet.valor; else (t.config = t.config || []).push({ clave: res.configSet.clave, valor: res.configSet.valor });
+      }
       store.set(DEMO_KEY, t);
     }
     return Object.assign({ ok: true, duplicado: res.duplicado, bonificaciones: res.bonificaciones }, Engine.computeState(t, ctx));
