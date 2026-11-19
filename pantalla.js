@@ -227,7 +227,7 @@
   }
 
   const MASCOTA_GROW = {
-    si: (m) => `<div class="flex gap-3"><button type="button" data-evolucionar class="pressable flex flex-1 items-center justify-center gap-3 h-tap px-4 rounded-ui bg-primary text-on-primary text-2xl font-bold">${Icon('auto_awesome', 'text-3xl', true)}<span>Evolucionar</span></button>${SonidoBtn('bg-surface-alt text-ink')}</div>`,
+    si: (m) => `<div class="flex gap-3"><button type="button" data-evolucionar class="pressable flex flex-1 items-center justify-center gap-3 h-tap px-4 rounded-ui bg-primary text-on-primary text-2xl font-bold">${Icon('auto_awesome', 'text-3xl', true)}<span>Evolucionar</span></button></div>`,
     no: () => ''
   };
   // Peligro: la mascota nunca retrocede; el profe decide si se reinicia. Tono tranquilo, sin dramatizar.
@@ -237,11 +237,19 @@
   };
   // Aviso permanente para los ninos: si nadie la cuida varias clases seguidas, se muere. Tono claro y tranquilo (ambar, sin rojo).
   const clasesTxt = (n) => `${n} ${n === 1 ? 'clase' : 'clases'}`;
+  // Cartel pequeno y plegable (cerrado por defecto) para ocupar el menor espacio posible
+  let descuidoAbierto = false;
+  document.addEventListener('toggle', (e) => { if (e.target && e.target.dataset && e.target.dataset.descuido !== undefined) descuidoAbierto = e.target.open; }, true);
+  const cartelDescuido = (icono, corto, largo, cls) => `
+    <details data-descuido ${descuidoAbierto ? 'open' : ''} class="rounded-ui text-sm ${cls}">
+      <summary class="flex items-center gap-2 px-3 h-9 cursor-pointer select-none list-none font-bold">${Icon(icono, 'text-xl', true)}<span class="flex-1 truncate">${corto}</span>${Icon('expand_more', 'text-xl')}</summary>
+      <p class="px-3 pb-2.5">${largo}</p>
+    </details>`;
   const MASCOTA_DESCUIDO = {
-    muerta: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-surface-alt border-2 border-line text-lg font-bold">${Icon('heart_broken', 'text-3xl', true)}<span>${esc(m.nombre)} ha muerto porque nadie la cuidó durante ${clasesTxt(m.descuido.limite)} seguidas. Tu profe puede revivirla.</span></p>`,
-    grave: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('warning', 'text-3xl', true)}<span>Última oportunidad: hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si falta el cuidado de la próxima clase, morirá.</span></p>`,
-    aviso: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-attention-soft text-attention text-lg font-bold">${Icon('schedule', 'text-3xl', true)}<span>Hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si pasan ${clasesTxt(m.descuido.limite)} seguidas, morirá.</span></p>`,
-    bien: (m) => `<p class="flex items-start gap-3 px-4 py-3 rounded-ui bg-surface-alt text-ink-soft text-lg">${Icon('info', 'text-3xl')}<span>${m.etapa >= 1 ? 'Cuídala en cada clase.' : 'Cuando salga del huevo, cuídala en cada clase.'} Si pasan <strong class="text-ink">${clasesTxt(m.descuido.limite)} seguidas</strong> sin cuidarla, se muere.</span></p>`,
+    muerta: (m) => cartelDescuido('heart_broken', 'Ha muerto', `${esc(m.nombre)} ha muerto porque nadie la cuidó durante ${clasesTxt(m.descuido.limite)} seguidas. Tu profe puede revivirla.`, 'bg-surface-alt border border-line text-ink'),
+    grave: (m) => cartelDescuido('warning', 'Última oportunidad', `Hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si falta el cuidado de la próxima clase, morirá.`, 'bg-attention-soft text-attention'),
+    aviso: (m) => cartelDescuido('schedule', `${clasesTxt(m.descuido.perdidas)} sin cuidarla`, `Hace ${clasesTxt(m.descuido.perdidas)} que nadie cuida a ${esc(m.nombre)}. Si pasan ${clasesTxt(m.descuido.limite)} seguidas, morirá.`, 'bg-attention-soft text-attention'),
+    bien: (m) => cartelDescuido('info', 'Si no la cuidas, muere', `${m.etapa >= 1 ? 'Cuídala en cada clase.' : 'Cuando salga del huevo, cuídala en cada clase.'} Si pasan <strong>${clasesTxt(m.descuido.limite)} seguidas</strong> sin cuidarla, se muere.`, 'bg-surface-alt text-ink-soft'),
     nada: () => ''
   };
   const claveDescuido = (m) => (!m.descuido || !m.descuido.limite ? 'nada' : m.descuido.estado);
@@ -351,7 +359,10 @@
   const MASCOTA_HEAD = (m, back) => `
       <div class="flex items-center justify-between gap-3 mb-3">
         ${back ? `<button type="button" data-mascota-view="main" class="pressable inline-flex items-center gap-2 h-tap px-4 rounded-ui bg-surface-alt text-ink font-bold">${Icon('arrow_back', 'text-2xl')}<span>Volver</span></button>` : `<h2 id="mascota-title" class="text-2xl font-bold truncate">${esc(m.nombre)}</h2>`}
-        <button type="button" data-close="sheet-mascota" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft shrink-0">${Icon('close', 'text-3xl')}</button>
+        <div class="flex items-center gap-2 shrink-0">
+          ${m.etapa >= 1 ? SonidoBtn('bg-surface-alt text-ink-soft') : ''}
+          <button type="button" data-close="sheet-mascota" aria-label="Cerrar" class="pressable flex items-center justify-center w-tap h-tap rounded-ui bg-surface-alt text-ink-soft shrink-0">${Icon('close', 'text-3xl')}</button>
+        </div>
       </div>`;
   const bigBtn = (view, icon, label) => `<button type="button" data-mascota-view="${view}" class="pressable inline-flex items-center justify-center gap-2 h-tap px-4 rounded-ui bg-primary text-on-primary text-lg font-bold">${Icon(icon, 'text-2xl')}<span>${label}</span></button>`;
   // Botones de la vista principal: Cuidar solo si hay una necesidad sin atender (nunca en el huevo); Diario si hay algo que contar
@@ -407,11 +418,7 @@
   }
   const mascotaOpen = () => document.getElementById('sheet-mascota').classList.contains('open');
   function renderMascota() {
-    if (S.mascota) {
-      const cuerpo = MascotaBody(S.mascota);
-      const toggle = S.mascota.etapa >= 1 && cuerpo.indexOf('data-evo-sound') < 0 ? `<div class="flex justify-end">${SonidoBtn('bg-surface text-muted')}</div>` : '';
-      $('#mascota-body').innerHTML = toggle + cuerpo;
-    }
+    if (S.mascota) $('#mascota-body').innerHTML = MascotaBody(S.mascota);
     else closeSheet('sheet-mascota');
   }
   /** Tras atender a la mascota: abre su pantalla y lanza el GIF de la accion; al acabar vuelve al GIF base. */
@@ -825,18 +832,12 @@
     resta: () => RuleGroup('resta')
   };
   const RulesGrid = () => resolve(RULES_GRID, hayReglas('suma') && hayReglas('resta') ? 'dos' : hayReglas('suma') ? 'suma' : 'resta', 'dos')();
-  // Aviso fijo para los ninos: la mascota muere si nadie la cuida
-  const INFO_MASCOTA = {
-    si: () => MASCOTA_DESCUIDO.bien(S.mascota),
-    no: () => ''
-  };
   const REGLAS_BODY = {
     lleno: () => `
       <div class="space-y-5">
         ${SectionIndex()}
         ${RulesGrid()}
         ${InfoRacha()}
-        ${resolve(INFO_MASCOTA, S.mascota && S.mascota.descuido && S.mascota.descuido.limite ? 'si' : 'no', 'no')()}
         ${BadgeLegend()}
       </div>`,
     vacio: () => renderEmpty('sinReglas')
@@ -1014,11 +1015,7 @@
   const posCola = (id) => (S.cola || []).findIndex((c) => c.id === id);
   const COLA_CTA = {
     fuera: () => `<button type="button" data-cola-entrar class="${btnClass('primary', 'w-full text-xl')}">${Icon('format_list_numbered', 'text-3xl')}<span>Ponerme en la cola</span></button>`,
-    dentro: (pos) => `
-      <div class="flex items-center gap-3">
-        <p class="flex-1 flex items-center gap-2 text-xl font-bold text-primary">${Icon('hourglass_top', 'text-3xl', true)}<span>${pos === 0 ? 'Eres el siguiente' : `Estás en la cola: turno ${pos + 1}`}</span></p>
-        <button type="button" data-cola-salir class="${btnClass('outline', 'shrink-0 text-lg border-2')}">${Icon('close', 'text-2xl')}<span>Salir</span></button>
-      </div>`
+    dentro: (pos) => `<p class="flex items-center gap-2 text-xl font-bold text-primary">${Icon('hourglass_top', 'text-3xl', true)}<span>${pos === 0 ? 'Eres el siguiente' : `Estás en la cola: turno ${pos + 1}`}</span></p>`
   };
   const TPV_CARD = {
     aviso: () => {
@@ -1685,7 +1682,6 @@
     ['[data-cuida-go]', () => doCuidar()],
     ['[data-confirm]', () => doRedeem('confirm')],
     ['[data-cola-entrar]', () => colaAccion('entrar')],
-    ['[data-cola-salir]', () => colaAccion('salir')],
     ['[data-enc-star]', (el) => { encSel.estrellas = Number(el.dataset.encStar); redrawDlg(); }],
     ['[data-enc-send]', () => sendEncuesta()],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],

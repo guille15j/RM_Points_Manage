@@ -349,7 +349,10 @@ const Engine = (function () {
   }
   /** Votos del nombre de la mascota (primer voto de cada alumno) y estado de la votacion. */
   function votacionNombre(led, items, alumnosAct, c) {
-    const premio = items.filter((i) => i.tipo === 'premio' && isActivo(i) && str(i.efecto) === 'nombre')[0];
+    // Aunque el premio de votar el nombre se desactive (activo FALSE), la votacion sigue contando: se cierra y gana el mas votado.
+    const todos = items.filter((i) => i.tipo === 'premio' && str(i.efecto) === 'nombre');
+    const premio = todos.filter(isActivo)[0] || todos[todos.length - 1];
+    const vacia = { estado: 'ninguna', premioId: '', opciones: [], votos: {}, votantes: 0, total: alumnosAct.length, porAlumno: {}, ganador: '', fecha: null };
     if (!premio) return { estado: 'ninguna', premioId: '', opciones: [], votos: {}, votantes: 0, total: alumnosAct.length, porAlumno: {}, ganador: '', fecha: null };
     const opciones = splitOpciones(premio.descripcion);
     const activos = {};
@@ -371,7 +374,8 @@ const Engine = (function () {
     const cierre = led.filter((m) => m.tipo === 'mascota' && str(m.ref) === 'cerrar-nombre')[0];
     if (cierre) fecha = cierre.fecha;
     const votantes = orden.length;
-    const cerrada = !!cierre || (alumnosAct.length > 0 && votantes >= alumnosAct.length);
+    const cerrada = !!cierre || !isActivo(premio) || (alumnosAct.length > 0 && votantes >= alumnosAct.length);
+    if (!isActivo(premio) && !votantes) return vacia;
     const ranking = opciones.filter((o) => votos[o] > 0).sort((x, y) => votos[y] - votos[x] || alcanzo[x] - alcanzo[y]);
     return {
       estado: cerrada ? 'cerrada' : 'abierta', premioId: str(premio.id), opciones, votos, votantes, total: alumnosAct.length,
