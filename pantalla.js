@@ -132,6 +132,7 @@
   };
   /** Etapas aun no alcanzadas: mascota/unknown.gif|png|svg. Si no hay ninguno, un signo de interrogacion. */
   const MascotaUnknown = (cls) => `<img src="mascota/unknown.${MASCOTA_EXT[extUsada.u || 0]}" data-unknown="1" data-cls="${cls}" alt="Todavía es un misterio" class="mascota-px object-contain ${cls}" draggable="false">`;
+  document.addEventListener('input', (e) => { if (e.target && e.target.id === 'enc-texto') encSel.texto = e.target.value.slice(0, 300); });
   document.addEventListener('load', (e) => {          // el GIF de accion ya esta: ahora empieza a contar su duracion
     const img = e.target;
     if (img && img.dataset && img.dataset.accion && mascotaAnim && mascotaAnim.fin && String(img.getAttribute('src')).indexOf('v=' + mascotaAnim.token) > 0) {
@@ -848,6 +849,7 @@
   const efectoKey = (e) => (String(e).indexOf('mascota:') === 0 ? 'mascota' : String(e));
   const PRIZE_CTA = {
     nombre: { icon: 'badge', label: 'Elegir nombre' },
+    encuesta: { icon: 'rate_review', label: 'Valorar' },
     estrella: { icon: 'star', label: 'Enviar estrella' },
     ninguno: { icon: 'redeem', label: 'Canjear' }
   };
@@ -902,6 +904,7 @@
     atendida: () => `${mascotaNombre()} ya está atendida. Hasta la próxima clase.`,
     noNecesita: () => `${mascotaNombre()} no necesita esto ahora`,
     votacionCerrada: () => 'El nombre ya está elegido',
+    encuestaHecha: () => 'Ya has respondido. ¡Gracias!',
     votado: () => `Tu voto: ${(findAlumno(S.sel) || {}).votoNombre || ''}`,
     estrellaEnviada: () => ({ html: `Ya has enviado tu estrella. Otra en <span data-countdown class="tabular-nums">${fmtCountdown()}</span>` }),
     bloqueadoTpv: () => 'Espera a que tu profe te desbloquee'
@@ -943,7 +946,8 @@
       if (!v || v.estado !== 'abierta') return 'votacionCerrada';
       return (findAlumno(S.sel) || {}).votoNombre ? 'votado' : enough(props);
     },
-    estrella: (props) => ((findAlumno(S.sel) || {}).estrellaHoy ? 'estrellaEnviada' : enough(props))
+    estrella: (props) => ((findAlumno(S.sel) || {}).estrellaHoy ? 'estrellaEnviada' : enough(props)),
+    encuesta: (props) => (((findAlumno(S.sel) || {}).encuestasHechas || []).indexOf(props.premio.id) >= 0 ? 'encuestaHecha' : enough(props))
   };
   const getPrizeState = (props) => (isUnlocked() ? resolve(PRIZE_STATE, efectoKey(props.premio.efecto), 'estandar')(props) : 'bloqueadoTpv');
   function renderPrize(props) {
@@ -953,7 +957,7 @@
   // Favoritos: premio que este alumno ha canjeado 2 o mas veces. Se guarda en este iPad (el TPV es unico), sin tocar la hoja.
   const FAV_KEY = 'tp_favs_v1';
   const FAV_MIN = 2;
-  const FAV_EXCLUIDOS = { nombre: true, estrella: true };   // premios de una sola vez o diarios: no tiene sentido destacarlos
+  const FAV_EXCLUIDOS = { nombre: true, estrella: true, encuesta: true };   // premios de una sola vez o diarios: no tiene sentido destacarlos
   const registrarFavorito = (alumnoId, premioId) => {
     const f = store.get(FAV_KEY, {});
     f[alumnoId] = f[alumnoId] || {};
@@ -1393,6 +1397,64 @@
     }
   }
 
+  /* ---- Encuesta: estrellas + comentario; solo sirve para las estadisticas del profesor ---- */
+  let encSel = { estrellas: 0, texto: '' };
+  function EncuestaBody({ p }) {
+    const estrellas = [1, 2, 3, 4, 5].map((n) => `<button type="button" data-enc-star="${n}" aria-label="${n} ${n === 1 ? 'estrella' : 'estrellas'}" aria-pressed="${encSel.estrellas === n}" class="pressable flex items-center justify-center w-[4.5rem] h-[4.5rem] rounded-ui-lg ${n <= encSel.estrellas ? 'text-primary' : 'text-ink-soft'}">${Icon('star', 'text-6xl', n <= encSel.estrellas)}</button>`).join('');
+    return `
+      <div class="flex flex-col gap-5">
+        <div class="text-center space-y-1">
+          <h2 id="dlg-title" class="text-3xl font-bold">${esc(p.nombre)}</h2>
+          <p class="text-ink-soft">${esc(String(p.descripcion || '') || 'Cuéntanos qué te ha parecido.')}</p>
+        </div>
+        <div class="flex items-center justify-center gap-2" role="group" aria-label="Valoración">${estrellas}</div>
+        <label class="block">
+          <span class="block mb-1 text-ink-soft">Comentario (opcional)</span>
+          <textarea id="enc-texto" rows="3" maxlength="300" ${loading ? 'disabled' : ''} placeholder="Escribe aquí lo que quieras" class="w-full p-4 rounded-ui-lg bg-surface-alt border-2 border-line text-xl text-ink outline-none focus:border-primary">${esc(encSel.texto)}</textarea>
+        </label>
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          ${noBtn()}
+          ${sendBtn({ key: 'encuesta', attrs: 'data-enc-send', off: !encSel.estrellas, cls: btnClass('primary', 'h-[4.5rem] text-xl'), icon: 'check', label: 'Enviar' })}
+        </div>
+      </div>`;
+  }
+  function openEncuesta(a, p) {
+    encSel = { estrellas: 0, texto: '' };
+    dlgMode = 'encuesta';
+    $('#dlg-body').innerHTML = EncuestaBody({ p });
+    openSheet('dlg');
+  }
+  async function sendEncuesta() {
+    const a = findAlumno(S.sel);
+    const p = pendingPrize;
+    if (!a || !p || !encSel.estrellas || busy) return;
+    busy = true;
+    loading = 'encuesta';
+    paintLoading();
+    const nombre = a.nombre;
+    try {
+      const res = await apiPost({ action: 'canje', batchId: batchFor(`enc|${a.id}|${p.id}`), alumnoId: a.id, premioId: p.id, estrellas: encSel.estrellas, comentario: encSel.texto });
+      batchDone();
+      applyServer(res);
+      persist();
+      setStatus(isDemo() ? 'demo' : 'ok');
+      S.sel = null;
+      render();
+      toast(`Gracias, ${nombre}. Tu opinión nos ayuda.`, 'ok');
+    } catch (err) {
+      console.error('Encuesta fallida:', err);
+      setStatus('off');
+      render();
+      toast('No se ha podido enviar. Avisa a tu profe y vuelve a probar.', 'err');
+    } finally {
+      loading = '';
+      closeSheet('dlg');
+      busy = false;
+      pendingPrize = null;
+      encSel = { estrellas: 0, texto: '' };
+    }
+  }
+
   /* ---- Estrella amable: propones una frase amable a un companero; el profe la revisa ---- */
   let estrellaSel = { para: '', frase: -1 };
   function EstrellaBody({ a, p }) {
@@ -1466,17 +1528,17 @@
   const paintLoading = () => {
     const a = findAlumno(S.sel);
     if (loading === 'confirm' && a && pendingPrize) $('#dlg-body').innerHTML = ConfirmBody({ a, p: pendingPrize });
-    else if (loading === 'nombre' || loading === 'estrella') redrawDlg();
+    else if (loading === 'nombre' || loading === 'estrella' || loading === 'encuesta') redrawDlg();
     else if (loading === 'custom') renderCustom();
     else if (loading === 'cuida') renderMascota();
   };
   const redrawDlg = () => {
     const a = findAlumno(S.sel);
     if (!a || !pendingPrize) return;
-    $('#dlg-body').innerHTML = dlgMode === 'nombre' ? NombreBody({ p: pendingPrize }) : EstrellaBody({ a, p: pendingPrize });
+    $('#dlg-body').innerHTML = dlgMode === 'nombre' ? NombreBody({ p: pendingPrize }) : dlgMode === 'encuesta' ? EncuestaBody({ p: pendingPrize }) : EstrellaBody({ a, p: pendingPrize });
   };
   // Premios con su propia ventana en vez de la confirmacion normal
-  const OWN_DIALOG = { nombre: openNombre, estrella: openEstrella, ninguno: null };
+  const OWN_DIALOG = { nombre: openNombre, estrella: openEstrella, encuesta: openEncuesta, ninguno: null };
   OWN_DIALOG.ninguno = () => null;
 
   // Que pasa despues de un canje, segun el efecto del premio (columna efecto de la hoja)
@@ -1624,6 +1686,8 @@
     ['[data-confirm]', () => doRedeem('confirm')],
     ['[data-cola-entrar]', () => colaAccion('entrar')],
     ['[data-cola-salir]', () => colaAccion('salir')],
+    ['[data-enc-star]', (el) => { encSel.estrellas = Number(el.dataset.encStar); redrawDlg(); }],
+    ['[data-enc-send]', () => sendEncuesta()],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],
     ['[data-est-para]', (el) => { estrellaSel.para = el.dataset.estPara; estrellaSel.paso = 2; redrawDlg(); }],

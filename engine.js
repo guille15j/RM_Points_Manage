@@ -53,6 +53,8 @@
  *    (empate: el que alcanzo antes sus votos).
  *  - Estrella amable: premio con efecto 'estrella' (descripcion = frases separadas por ';'). El alumno
  *    propone una a un companero (1 al dia); el profesor la aprueba (suma estrella_puntos) o rechaza.
+ *  - Encuesta: premio con efecto 'encuesta' (nombre = titulo, descripcion = pregunta). El alumno da 1-5 estrellas y un
+ *    comentario opcional (movimiento 'encuesta', nota 'estrellas|comentario'). Una vez por alumno y encuesta; solo estadisticas.
  *  - Ayudante de turno: rota por orden de la hoja Alumnos; el profesor confirma (suma ayudante_puntos)
  *    o salta al siguiente si falta.
  */
@@ -513,6 +515,26 @@ const Engine = (function () {
     const estado = muerta ? 'muerta' : perdidas >= limite - 1 && perdidas > 0 ? 'grave' : perdidas > 0 ? 'aviso' : 'bien';
     return { perdidas, limite, restantes: Math.max(0, limite - perdidas), estado, muerta };
   }
+  /** Encuestas (premios con efecto 'encuesta'): estadisticas anonimas para el profesor. */
+  function resumenEncuestas(led, items, ctx, totalAlumnos) {
+    const premios = items.filter((i) => i.tipo === 'premio' && str(i.efecto) === 'encuesta');
+    return premios.map((pr) => {
+      const filas = led.filter((m) => m.tipo === 'encuesta' && str(m.ref) === str(pr.id));
+      const dist = [0, 0, 0, 0, 0];
+      const comentarios = [];
+      let suma = 0;
+      filas.forEach((m) => {
+        const nota = str(m.nota), i = nota.indexOf('|');
+        const est = Math.round(Number(i < 0 ? nota : nota.slice(0, i)));
+        if (!(est >= 1 && est <= 5)) return;
+        dist[est - 1]++; suma += est;
+        const texto = i < 0 ? '' : nota.slice(i + 1).trim();
+        if (texto) comentarios.push({ dia: toDay(m.fecha, ctx), estrellas: est, texto });
+      });
+      const n = dist.reduce((a, b) => a + b, 0);
+      return { id: str(pr.id), titulo: str(pr.nombre), pregunta: str(pr.descripcion), activa: isActivo(pr), respuestas: n, total: totalAlumnos, media: n ? Math.round(suma / n * 10) / 10 : 0, distribucion: dist, comentarios: comentarios.reverse() };
+    });
+  }
   /** Cola del TPV: alumnos esperando, en orden de llegada. Salen al ser desbloqueados, al canjear/enviar estrella o al irse. */
   function colaTpv(led) {
     let cola = [];
@@ -587,6 +609,7 @@ const Engine = (function () {
         cosmeticos: cosmeticosDe(it.ever[id], unlocks),
         pendientes: pend[id] || 0,
         votoNombre: vot.porAlumno[id] || '',
+        encuestasHechas: led.filter((m) => m.tipo === 'encuesta' && str(m.alumnoId) === id).map((m) => str(m.ref)),
         estrellaHoy: !!estHoy[id],
         estrellaBloqueados: estrellaBloqueados(led, ctx, id, dayNum(hoy)),
         desbloqueado: !c.tpvBloqueo || !!tpv[id],
@@ -660,6 +683,7 @@ const Engine = (function () {
       mascota,
       cola: colaTpv(led).map((id) => { const a = alumnosAct.find((x) => str(x.id) === id); return a ? { id, nombre: str(a.nombre) } : null; }).filter(Boolean),
       equilibrio: equilibrioClase(led, ctx, c, alumnosAct),
+      encuestas: resumenEncuestas(led, items, ctx, alumnosAct.length),
       estrellas,
       ayudante: ay ? { id: str(ay.id), nombre: str(ay.nombre) } : null,
       config: {
@@ -799,6 +823,7 @@ const Engine = (function () {
       if ((bal[id] || 0) < coste) throw new Error('Saldo insuficiente');
       const efecto = str(premio.efecto);
       let nota = str(premio.nombre);
+      let encuesta = null;
       if (accionDe(efecto)) {
         if (!c.mascotaActiva) throw new Error('La mascota no está activa');
         if (descuidoMascota(cur(), items, ctx, c, progresoMascota(cur(), items, ctx, c, activos)).muerta) throw new Error('La mascota ha muerto. Pide a tu profe que la reviva');
@@ -814,8 +839,14 @@ const Engine = (function () {
         nota = opcion;
       } else if (efecto === 'estrella') {
         throw new Error('La estrella amable se envía desde su propia pantalla');
+      } else if (efecto === 'encuesta') {
+        // Encuesta: solo estadisticas para el profesor (estrellas 1-5 + comentario opcional). Una vez por alumno y encuesta.
+        encuesta = { estrellas: Math.round(Number(p.estrellas)), texto: str(p.comentario).replace(/\s+/g, ' ').trim().slice(0, 300) };
+        if (!(encuesta.estrellas >= 1 && encuesta.estrellas <= 5)) throw new Error('Elige de 1 a 5 estrellas');
+        if (led.some((m) => m.tipo === 'encuesta' && str(m.ref) === str(premio.id) && str(m.alumnoId) === id)) throw new Error('Ya has respondido esta encuesta');
       }
       add(id, 'canje', -coste, nota, 'tpv', str(premio.id));
+      if (encuesta) add(id, 'encuesta', 0, encuesta.estrellas + '|' + encuesta.texto, 'tpv', str(premio.id));
     } else if (p.action === 'estrella') {
       const id = alumnoValido(p.alumnoId);
       const para = alumnoValido(p.paraId);

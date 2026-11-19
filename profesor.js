@@ -39,6 +39,7 @@
     ayudante: saved.ayudante || null,
     cola: [],                       // alumnos esperando el TPV (solo lectura, viene del servidor)
     equilibrio: null,               // informe de equilibrio (solo lectura)
+    encuestas: [],                  // estadisticas de las encuestas (solo lectura)
     uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
     cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
     pending: saved.pending || null, // {id,sig}: batchId del ultimo intento, para reintentos idempotentes
@@ -65,7 +66,7 @@
     if (res.ts && !vieja) lastTs = res.ts;
     if (!vieja) {
       ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
-      ['cola', 'equilibrio'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; });
+      ['cola', 'equilibrio', 'encuestas'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; });
       ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
     }
     aplicarAplicados(res.aplicados);
@@ -663,6 +664,26 @@
     toast(msg, 'ok');
   }
 
+  /* ======================= ENCUESTAS: estadisticas anonimas ======================= */
+  const fmtMedia = (n) => String(n).replace('.', ',');
+  const ENC_COMENTARIOS = {
+    si: (cs) => `<ul class="space-y-2">${cs.map((c) => `<li class="p-2.5 rounded-ui bg-surface-alt"><p class="flex items-center gap-1 text-sm text-ink-soft">${Icon('star', 'text-base text-primary', true)}<span class="font-semibold text-ink">${c.estrellas}</span><span>· ${fmtDia(c.dia)}</span></p><p class="mt-0.5">${esc(c.texto)}</p></li>`).join('')}</ul>`,
+    no: () => `<p class="text-ink-soft">Sin comentarios.</p>`
+  };
+  const ENC_BODY = {
+    vacia: (e) => `<p class="text-ink-soft">Aún no ha respondido nadie.</p>`,
+    datos: (e) => {
+      const max = Math.max.apply(null, e.distribucion.concat(1));
+      const barras = [5, 4, 3, 2, 1].map((n) => `<li class="flex items-center gap-2"><span class="w-4 text-right tabular-nums text-sm">${n}</span>${Icon('star', 'text-base text-primary', true)}<span class="flex-1 h-3 rounded-full bg-surface-alt overflow-hidden"><span class="block h-full rounded-full bg-primary" style="width:${(e.distribucion[n - 1] / max * 100).toFixed(0)}%"></span></span><span class="w-6 tabular-nums text-sm text-ink-soft">${e.distribucion[n - 1]}</span></li>`).join('');
+      return `<p class="flex items-baseline gap-2"><span class="text-3xl font-bold tabular-nums">${fmtMedia(e.media)}</span><span class="text-ink-soft">de 5 · ${e.respuestas} de ${e.total} han respondido</span></p><ul class="space-y-1">${barras}</ul><h4 class="pt-1 font-semibold">Comentarios</h4>${resolve(ENC_COMENTARIOS, e.comentarios.length ? 'si' : 'no', 'no')(e.comentarios)}`;
+    }
+  };
+  const ENC_LISTA = {
+    lleno: (es) => es.map((e) => `<section class="space-y-2 pb-4 border-b border-line last:border-0"><h3 class="font-semibold">${esc(e.titulo)}${e.activa ? '' : ' <span class="text-ink-soft font-normal">(inactiva)</span>'}</h3>${e.pregunta ? `<p class="text-sm text-ink-soft">${esc(e.pregunta)}</p>` : ''}${resolve(ENC_BODY, e.respuestas ? 'datos' : 'vacia', 'vacia')(e)}</section>`).join(''),
+    vacio: () => `<p class="text-ink-soft">No hay encuestas. Crea un premio con efecto <strong>encuesta</strong> en la hoja y aparecerá aquí.</p>`
+  };
+  function renderEnc() { $('#enc-body').innerHTML = resolve(ENC_LISTA, (S.encuestas || []).length ? 'lleno' : 'vacio', 'vacio')(S.encuestas || []); }
+
   /* ======================= CALENDARIO: dias sin clase ======================= */
   const fmtDia = (d) => d.split('-').reverse().join('/');
   const CAL_LISTA = {
@@ -967,6 +988,7 @@
     ['[data-cola-quitar]', (el) => colaQuitar(el.dataset.colaQuitar)],
     ['[data-revivir]', () => { if (!enCarrito.masc('revivir')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'revivir', nota: 'Revivir la mascota' }, 'Añadido al carrito'); renderClase(); }],
     ['[data-eq-sel]', () => { selected.clear(); bajosEquilibrio().forEach((x) => selected.add(x.id)); closeSheet('sheet-clase'); renderList(); toast(`${selected.size} seleccionados`, 'ok'); }],
+    ['#btn-enc', () => { closeSheet('sheet-mas'); renderEnc(); openSheet('sheet-enc'); }],
     ['#btn-cal', () => { closeSheet('sheet-mas'); renderCal(); openSheet('sheet-cal'); }],
     ['[data-dia-quitar]', (el) => guardarDias(diasSinClase().filter((d) => d !== el.dataset.diaQuitar))],
     ['#dia-add', () => { const v = $('#dia-input').value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return toast('Elige una fecha', 'info'); if (diasSinClase().indexOf(v) >= 0) return toast('Ese día ya está marcado', 'info'); $('#dia-input').value = ''; guardarDias(diasSinClase().concat(v)); }],

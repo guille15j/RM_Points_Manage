@@ -51,7 +51,7 @@
   };
 
   /** Escoge y devuelve del estado solo lo que pinta la interfaz (para comparar y guardar). */
-  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config', 'cola', 'equilibrio'];
+  const STATE_KEYS = ['alumnos', 'reglas', 'premios', 'insignias', 'reto', 'mascota', 'estrellas', 'ayudante', 'cuidados', 'config', 'cola', 'equilibrio', 'encuestas'];
   const pickState = (r) => STATE_KEYS.reduce((o, k) => ((o[k] = r[k] === undefined ? null : r[k]), o), {});
 
   /* ---------- Red ---------- */
