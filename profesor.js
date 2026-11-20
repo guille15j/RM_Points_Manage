@@ -39,6 +39,7 @@
     ayudante: saved.ayudante || null,
     cola: [],                       // alumnos esperando el TPV (solo lectura, viene del servidor)
     equilibrio: null,               // informe de equilibrio (solo lectura)
+    economia: null,                 // panel de economia (solo lectura)
     encuestas: [],                  // estadisticas de las encuestas (solo lectura)
     uso: saved.uso || {},           // veces usado cada motivo (ordena los favoritos del dock)
     cart: saved.cart || [],         // [{id,alumnoId,tipo:'delta'|'reset'|'ruleta'|'insignia',delta,nota,ref}]
@@ -61,12 +62,15 @@
   const saveLocal = () => store.set(KEY, { alumnos: S.alumnos, reglas: S.reglas, insignias: S.insignias, config: S.config, mascota: S.mascota, estrellas: S.estrellas, ayudante: S.ayudante, uso: S.uso, cart: S.cart, pending: S.pending });
   const persist = () => { saveLocal(); scheduleCartSync(); };
   let lastTs = '';
+  let colaVista = false;   // la primera respuesta no avisa: solo los cambios posteriores
   const applyServer = (res) => {
     const vieja = !!res.ts && res.ts < lastTs;                  // respuesta que llego tarde: no pisa a otra mas reciente
     if (res.ts && !vieja) lastTs = res.ts;
     if (!vieja) {
       ['alumnos', 'reglas', 'insignias', 'config', 'estrellas'].forEach((k) => { if (res[k]) S[k] = res[k]; });
-      ['cola', 'equilibrio', 'encuestas'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; });
+      if (Array.isArray(res.cola) && colaVista && res.cola.length > (S.cola || []).length) { const nuevo = res.cola[res.cola.length - 1]; setTimeout(() => toast(`${nuevo.nombre} se ha puesto en la cola`, 'info'), 0); }
+      ['cola', 'equilibrio', 'economia', 'encuestas'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; });
+      if (Array.isArray(res.cola)) colaVista = true;
       ['mascota', 'ayudante'].forEach((k) => { if (res[k] !== undefined) S[k] = res[k]; }); // pueden ser null (mascota desactivada)
     }
     aplicarAplicados(res.aplicados);
@@ -595,6 +599,18 @@
     ok: (e) => `<section class="space-y-1"><h3 class="flex items-center gap-2 font-semibold">${Icon('balance', 'text-xl')}Equilibrio</h3><p class="text-ink-soft">Todos han recibido reconocimientos parecidos en las últimas ${e.clases} clases.</p></section>`,
     vacio: () => ''
   };
+  const ECONOMIA = {
+    si: (e) => `
+      <section class="space-y-2">
+        <h3 class="flex items-center gap-2 font-semibold">${Icon('savings', 'text-xl')}Economía de la clase</h3>
+        <ul class="space-y-1">
+          <li class="flex justify-between gap-2"><span class="text-ink-soft">Puntos en circulación</span><span class="tabular-nums font-semibold">${e.circulacion}</span></li>
+          <li class="flex justify-between gap-2"><span class="text-ink-soft">Canjes en 7 días</span><span class="tabular-nums font-semibold">${e.canjes7} (${e.gastados7} pts)</span></li>
+        </ul>
+        ${e.ahorradores.length ? `<p class="text-sm text-ink-soft">Acumulan sin canjear (quizá les falte un premio que les motive):</p><ul class="space-y-1">${e.ahorradores.map((a) => `<li class="flex justify-between gap-2"><span class="truncate">${esc(a.nombre)}</span><span class="tabular-nums font-semibold">${a.puntos}</span></li>`).join('')}</ul>` : '<p class="text-sm text-ink-soft">Nadie acumula puntos sin gastarlos.</p>'}
+      </section>`,
+    no: () => ''
+  };
   const bajosEquilibrio = () => ((S.equilibrio && S.equilibrio.lista) || []).filter((x) => x.bajo);
   /* ---- Descuido de la mascota ---- */
   const DESCUIDO = {
@@ -641,7 +657,8 @@
       resolve(AYUDANTE, S.ayudante ? 'si' : 'no', 'no')(S.ayudante, pts) +
       resolve(ESTRELLAS, est.length ? 'lleno' : 'vacio', 'vacio')(est, ept) +
       resolve(MASCOTA_SECTION, S.mascota ? 'si' : 'no', 'no')(S.mascota) +
-      resolve(EQUILIBRIO, !S.equilibrio || !S.equilibrio.clases ? 'vacio' : bajos.length ? 'lleno' : 'ok', 'vacio')(S.equilibrio, bajos);
+      resolve(EQUILIBRIO, !S.equilibrio || !S.equilibrio.clases ? 'vacio' : bajos.length ? 'lleno' : 'ok', 'vacio')(S.equilibrio, bajos) +
+      resolve(ECONOMIA, S.economia ? 'si' : 'no', 'no')(S.economia);
   }
   function openClase() {
     confirmReset = false;
@@ -662,6 +679,25 @@
     persist();
     render();
     toast(msg, 'ok');
+  }
+
+  /* ======================= PIN del profesor (si existe pin_profesor en Config el servidor lo exige) ======================= */
+  let pinPromesa = null, pinResolver = null;
+  TP.pedirPin = (code) => {
+    if (pinPromesa) return pinPromesa;
+    pinPromesa = new Promise((resolve) => { pinResolver = resolve; });
+    $('#pin-msg').textContent = code === 'PIN_INCORRECTO' ? 'PIN incorrecto. Prueba otra vez.' : 'Introduce el PIN del profesor.';
+    $('#pin-input').value = '';
+    openSheet('sheet-pin');
+    setTimeout(() => $('#pin-input').focus(), 250);
+    return pinPromesa;
+  };
+  function pinHecho(valor) {
+    const r = pinResolver;
+    pinResolver = null; pinPromesa = null;
+    closeSheet('sheet-pin');
+    if (valor) store.set(TP.PIN_KEY, valor);
+    if (r) r(valor || '');
   }
 
   /* ======================= ENCUESTAS: estadisticas anonimas ======================= */
@@ -988,6 +1024,8 @@
     ['[data-cola-quitar]', (el) => colaQuitar(el.dataset.colaQuitar)],
     ['[data-revivir]', () => { if (!enCarrito.masc('revivir')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'revivir', nota: 'Revivir la mascota' }, 'Añadido al carrito'); renderClase(); }],
     ['[data-eq-sel]', () => { selected.clear(); bajosEquilibrio().forEach((x) => selected.add(x.id)); closeSheet('sheet-clase'); renderList(); toast(`${selected.size} seleccionados`, 'ok'); }],
+    ['#pin-ok', () => pinHecho($('#pin-input').value.trim())],
+    ['#pin-cancel', () => pinHecho('')],
     ['#btn-enc', () => { closeSheet('sheet-mas'); renderEnc(); openSheet('sheet-enc'); }],
     ['#btn-cal', () => { closeSheet('sheet-mas'); renderCal(); openSheet('sheet-cal'); }],
     ['[data-dia-quitar]', (el) => guardarDias(diasSinClase().filter((d) => d !== el.dataset.diaQuitar))],
@@ -999,7 +1037,12 @@
     ['[data-reset-ask]', () => { confirmReset = true; renderClase(); }],
     ['[data-reset-cancel]', () => { confirmReset = false; renderClase(); }],
     ['[data-reset-ok]', () => { if (!enCarrito.masc('reiniciar')) queueClase({ tipo: 'mascota', alumnoId: '', ref: 'reiniciar', nota: 'Reiniciar la mascota desde el huevo' }, 'Añadido al carrito'); }],
-    ['#btn-mas', () => openSheet('sheet-mas')],
+    ['#btn-mas', () => { $('#calma-txt').textContent = (S.config && S.config.modoCalma) ? 'Desactivar modo calma (iPad)' : 'Activar modo calma (iPad)'; openSheet('sheet-mas'); }],
+    ['#btn-calma', async () => {
+      const on = !(S.config && S.config.modoCalma); closeSheet('sheet-mas');
+      try { const res = await apiPost({ action: 'config_set', batchId: uid(), clave: 'modo_calma', valor: on }); applyServer(res); persist(); setStatus(isDemo() ? 'demo' : 'ok'); toast(on ? 'Modo calma activado' : 'Modo calma desactivado', 'ok'); }
+      catch (err) { setStatus('off'); toast(`No se ha guardado (${err.message})`, 'err'); }
+    }],
     ['#btn-clase', () => { closeSheet('sheet-mas'); openClase(); }],
     ['[data-del]', (el) => deleteMov(el.dataset.del)],
     ['[data-edit]', (el) => openEdit(el.dataset.edit)],
@@ -1039,6 +1082,7 @@
   });
 
   // Refresco al volver a la pestana y cada cierto tiempo (nunca mientras se envia)
+  $('#pin-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') pinHecho($('#pin-input').value.trim()); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   setInterval(() => { if (!document.hidden && !sending) refresh(false); }, Math.max(CFG.POLL_MS || 15000, 20000));
 

@@ -66,8 +66,18 @@
   let lastTs = '';
   const applyServer = (res) => {
     if (res.ts) { if (res.ts < lastTs) return; lastTs = res.ts; }
+    const antes = findAlumno(S.sel);
+    const puntosAntes = antes ? antes.puntos : null;
     STATE_KEYS.forEach((k) => { if (res[k] !== undefined && (res[k] !== null || k === 'reto' || k === 'mascota' || k === 'ayudante')) S[k] = res[k]; });
+    // Llegan puntos nuevos al alumno que tiene el TPV: se muestra un "+N" suave unos segundos (no se envia nada)
+    const ahora = findAlumno(S.sel);
+    if (ahora && puntosAntes !== null && ahora.id === (antes || {}).id && ahora.puntos > puntosAntes) {
+      ganado = { id: ahora.id, n: ahora.puntos - puntosAntes };
+      setTimeout(() => { ganado = null; }, 7000);
+    }
   };
+  let ganado = null;   // {id, n}: puntos recien recibidos
+  const GANADO_CHIP = { si: (n) => `<span class="ganado-chip inline-flex items-center px-3 h-9 rounded-full bg-success-soft text-success font-bold text-xl" role="status">+${n}</span>`, no: () => '' };
   const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const findAlumno = (id) => S.alumnos.find((a) => a.id === id);
   const findPremio = (id) => S.premios.find((p) => p.id === id);
@@ -450,7 +460,7 @@
   /* Sonido sintetizado (Web Audio, sin archivos): estilo chiptune de evolucion. Melodia propia, no copia ninguna.
    * Apagado por defecto (perfiles sensibles al sonido); el interruptor se guarda en cada iPad. */
   const SONIDO_KEY = 'tp_evo_sound';
-  const sonidoOn = () => store.get(SONIDO_KEY, false) === true;
+  const sonidoOn = () => store.get(SONIDO_KEY, false) === true && !(S.config && S.config.modoCalma);
   const SonidoBtn = (cls) => `<button type="button" data-evo-sound aria-label="Sonido" aria-pressed="${sonidoOn()}" class="pressable flex items-center justify-center w-tap h-tap shrink-0 rounded-ui ${cls}">${Icon(sonidoOn() ? 'volume_up' : 'volume_off', 'text-3xl')}</button>`;
   let audioCtx = null;
   function audio() {
@@ -955,21 +965,10 @@
     return resolve(PRIZE_CARDS, getPrizeState(props), 'locked')(props);
   }
 
-  // Favoritos: premio que este alumno ha canjeado 2 o mas veces. Se guarda en este iPad (el TPV es unico), sin tocar la hoja.
-  const FAV_KEY = 'tp_favs_v1';
-  const FAV_MIN = 2;
-  const FAV_EXCLUIDOS = { nombre: true, estrella: true, encuesta: true };   // premios de una sola vez o diarios: no tiene sentido destacarlos
-  const registrarFavorito = (alumnoId, premioId) => {
-    const f = store.get(FAV_KEY, {});
-    f[alumnoId] = f[alumnoId] || {};
-    f[alumnoId][premioId] = (f[alumnoId][premioId] || 0) + 1;
-    store.set(FAV_KEY, f);
-  };
+  // Favorito: lo calcula el servidor (alumno.favorito = id del premio que mas repite, 2 o mas veces)
   function favoritoDe(alumnoId, premios) {
-    const c = store.get(FAV_KEY, {})[alumnoId] || {};
-    let mejor = null;
-    premios.forEach((p) => { if (!FAV_EXCLUIDOS[efectoKey(p.efecto)] && (c[p.id] || 0) >= FAV_MIN && (!mejor || c[p.id] > c[mejor.id])) mejor = p; });
-    return mejor;
+    const a = findAlumno(alumnoId);
+    return (a && a.favorito && premios.find((p) => p.id === a.favorito)) || null;
   }
   // Tres tramos de precio (sin partir premios que cuestan lo mismo). Con pocos premios no se separan.
   function tramosDePrecio(premios) {
@@ -1003,7 +1002,6 @@
 
   /* ---- Aviso: canje bloqueado por el profesor ---- */
   // Solo cubre la cuadricula de premios (no la pagina): Cambiar y las pestanas siguen libres
-  const CLAVE_TPV = 'OPEN';
   let pideClave = false;
   const TPV_BANNER = {
     si: () => `
@@ -1049,12 +1047,12 @@
     finally { busy = false; render(); }
   }
   async function abrirManual(valor) {
-    if (String(valor).trim().toUpperCase() !== CLAVE_TPV) { toast('Contraseña incorrecta', 'err'); return; }
+    if (!S.config.pinConfigurado) { toast('El profesor aún no ha creado el PIN (pin_profesor en la hoja Config).', 'err'); return; }
     const a = findAlumno(S.sel);
     if (!a || busy) return;
     busy = true;
     try {
-      const res = await apiPost({ action: 'tpv_abrir', batchId: batchFor(`abrir|${a.id}`), alumnoId: a.id });
+      const res = await apiPost({ action: 'tpv_abrir', batchId: batchFor(`abrir|${a.id}`), alumnoId: a.id, pin: String(valor).trim() });
       batchDone(); pideClave = false; applyServer(res); persist();
     } catch (err) { toast(`No se ha desbloqueado (${err.message})`, 'err'); }
     finally { busy = false; render(); }
@@ -1087,8 +1085,9 @@
   const COLA_LISTA = {
     si: () => `
       <div class="flex flex-wrap items-center gap-3 p-4 mb-6 rounded-ui-lg bg-surface-alt border border-line" aria-label="Cola del TPV">
-        <span class="flex items-center gap-2 text-lg font-bold">${Icon('format_list_numbered', 'text-3xl text-primary')}Esperando turno</span>
-        ${S.cola.map((c, i) => `<span class="inline-flex items-center gap-2 px-3 h-10 rounded-full bg-surface border border-line text-lg"><strong class="tabular-nums">${i + 1}</strong>${esc(c.nombre)}</span>`).join('')}
+        <span class="flex items-center gap-2 text-lg font-bold w-full">${Icon('campaign', 'text-3xl text-primary')}Es el turno de ${esc(S.cola[0].nombre)}</span>
+        <span class="flex items-center gap-2 text-lg font-bold">${Icon('format_list_numbered', 'text-3xl text-primary')}Cola</span>
+        ${S.cola.map((c, i) => `<span class="inline-flex items-center gap-2 px-3 h-10 rounded-full ${i === 0 ? 'bg-primary text-on-primary font-bold' : 'bg-surface border border-line'} text-lg"><strong class="tabular-nums">${i + 1}</strong>${esc(c.nombre)}</span>`).join('')}
       </div>`,
     no: () => ''
   };
@@ -1112,6 +1111,10 @@
       </section>`;
   }
 
+  const SEMANA_PTS = {
+    si: (n) => `<p class="flex items-center gap-2 text-ink-soft">${Icon('trending_up', 'text-2xl')}<span>Esta semana has ganado <strong class="text-ink">${n}</strong> puntos</span></p>`,
+    no: () => ''
+  };
   const SIGUIENTE_PREMIO = {
     si: (p, falta) => `<p class="flex items-center gap-2 text-ink-soft">${Icon('flag', 'text-2xl')}<span>Te faltan <strong class="text-ink">${falta}</strong> puntos para <strong class="text-ink">${esc(p.nombre)}</strong></span></p>`,
     no: () => ''
@@ -1125,7 +1128,8 @@
           ${StudentAvatar(a, 'lg')}
           <div class="flex-1 min-w-0">
             <p class="text-2xl font-bold truncate">${esc(a.nombre)}</p>
-            <p class="flex items-center gap-2 text-ink-soft">Tienes ${Score({ value: a.puntos, size: 'text-2xl text-ink' })} puntos</p>
+            <p class="flex items-center gap-2 text-ink-soft">Tienes ${Score({ value: a.puntos, size: 'text-2xl text-ink' })} puntos ${resolve(GANADO_CHIP, ganado && ganado.id === a.id ? 'si' : 'no', 'no')(ganado && ganado.n)}</p>
+            ${resolve(SEMANA_PTS, a.puntosSemana > 0 ? 'si' : 'no', 'no')(a.puntosSemana)}
             ${resolve(SIGUIENTE_PREMIO, proximo ? 'si' : 'no', 'no')(proximo, proximo ? proximo.coste - a.puntos : 0)}
           </div>
           <button type="button" data-change class="${btnClass('outline', 'shrink-0 text-xl border-2')}">${Icon('swap_horiz', 'text-3xl')}<span>Cambiar</span></button>
@@ -1151,32 +1155,39 @@
   const CanjePanel = () => resolve(CANJE_STEPS, getCanjeStep(), 'alumno')();
 
   /* ---- Turno: tiempo maximo con el TPV y cierre por inactividad (el iPad es unico para todos) ---- */
-  const TURNO_MS = 120000;       // duracion del turno
-  const INACTIVO_MS = 45000;     // sin tocar nada: el TPV se cierra solo
-  const turno = { id: '', inicio: 0, ultimo: 0 };
-  const turnoRestante = () => (turno.id === S.sel ? Math.max(0, TURNO_MS - (Date.now() - turno.inicio)) : TURNO_MS);
+  // Modo calma (lo activa el profesor): tiempos x2, sin animaciones ni sonido
+  const calma = () => !!(S.config && S.config.modoCalma);
+  const turnoMs = () => 120000 * (calma() ? 2 : 1);      // duracion del turno
+  const inactivoMs = () => 45000 * (calma() ? 2 : 1);    // sin tocar nada: el TPV se cierra solo
+  const AVISO_MS = 15000;                                // aviso antes de que acabe el turno o la inactividad
+  const turno = { id: '', inicio: 0, ultimo: 0, avisoTurno: false, avisoInact: false };
+  const turnoRestante = () => (turno.id === S.sel ? Math.max(0, turnoMs() - (Date.now() - turno.inicio)) : turnoMs());
   const fmtMin = (ms) => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
   const TURNO_BARRA = {
     si: () => `
       <div class="mb-6" aria-label="Tiempo de turno">
         <div class="flex items-center justify-between mb-1 text-ink-soft"><span class="flex items-center gap-2">${Icon('timer', 'text-2xl')}Tu turno</span><span data-turno-txt class="tabular-nums font-bold text-ink">${fmtMin(turnoRestante())}</span></div>
-        <div class="h-3 rounded-full bg-surface-alt overflow-hidden"><div data-turno-bar class="h-full rounded-full bg-primary" style="width:${(turnoRestante() / TURNO_MS * 100).toFixed(1)}%"></div></div>
+        <div class="h-3 rounded-full bg-surface-alt overflow-hidden"><div data-turno-bar class="h-full rounded-full bg-primary" style="width:${(turnoRestante() / turnoMs() * 100).toFixed(1)}%"></div></div>
       </div>`,
     no: () => ''
   };
-  document.addEventListener('pointerdown', () => { turno.ultimo = Date.now(); }, { capture: true, passive: true });
+  document.addEventListener('pointerdown', () => { turno.ultimo = Date.now(); turno.avisoInact = false; }, { capture: true, passive: true });
   setInterval(() => {
+    document.documentElement.classList.toggle('calma', calma());
     const a = findAlumno(S.sel);
     if (!a || !isUnlocked() || S.config.tpvBloqueo === false) { turno.id = ''; return; }
     const ahora = Date.now();
-    if (turno.id !== a.id) { turno.id = a.id; turno.inicio = ahora; turno.ultimo = ahora; return; }
+    if (turno.id !== a.id) { turno.id = a.id; turno.inicio = ahora; turno.ultimo = ahora; turno.avisoTurno = false; turno.avisoInact = false; return; }
     if (busy || custom || pideClave || document.querySelector('.sheet.open')) { turno.inicio += 1000; turno.ultimo += 1000; return; } // en pausa mientras hay una ventana abierta
-    const resto = TURNO_MS - (ahora - turno.inicio);
+    const resto = turnoMs() - (ahora - turno.inicio);
     const txt = document.querySelector('[data-turno-txt]'), bar = document.querySelector('[data-turno-bar]');
     if (txt) txt.textContent = fmtMin(Math.max(0, resto));
-    if (bar) { bar.style.width = Math.max(0, resto / TURNO_MS * 100).toFixed(1) + '%'; bar.classList.toggle('bg-attention', resto < 20000); bar.classList.toggle('bg-primary', resto >= 20000); }
+    if (bar) { bar.style.width = Math.max(0, resto / turnoMs() * 100).toFixed(1) + '%'; bar.classList.toggle('bg-attention', resto < AVISO_MS); bar.classList.toggle('bg-primary', resto >= AVISO_MS); }
+    if (resto <= AVISO_MS && resto > 0 && !turno.avisoTurno) { turno.avisoTurno = true; toast('Te quedan 15 segundos de turno.', 'info'); }
+    const sinTocar = ahora - turno.ultimo;
+    if (sinTocar >= inactivoMs() - AVISO_MS && sinTocar < inactivoMs() && !turno.avisoInact) { turno.avisoInact = true; toast('¿Sigues ahí? Toca la pantalla para continuar.', 'info'); }
     if (resto <= 0) { toast('Se acabó tu turno. Si quieres, vuelve a pedirlo.', 'info'); cambiarAlumno(); }
-    else if (ahora - turno.ultimo >= INACTIVO_MS) { toast('El TPV se ha cerrado por inactividad.', 'info'); cambiarAlumno(); }
+    else if (ahora - turno.ultimo >= inactivoMs()) { toast('El TPV se ha cerrado por inactividad.', 'info'); cambiarAlumno(); }
   }, 1000);
 
   /* ---- Confirmacion ---- */
@@ -1325,6 +1336,7 @@
     const a = findAlumno(S.sel);
     const p = findPremio(prizeId);
     if (!a || !p || busy) return;
+    if (!TP.online()) return toast('Sin conexión. Avisa al profesor.', 'info');
     if (p.coste > a.puntos) return toast('Todavía no tienes puntos para este premio.', 'info');
     pendingPrize = p;
     const own = resolve(OWN_DIALOG, efectoKey(p.efecto), 'ninguno');
@@ -1396,6 +1408,7 @@
 
   /* ---- Encuesta: estrellas + comentario; solo sirve para las estadisticas del profesor ---- */
   let encSel = { estrellas: 0, texto: '' };
+  const ENC_FRASES = ['Me ha gustado', 'Ha sido divertido', 'He aprendido mucho', 'Era difícil', 'Quiero repetir'];
   function EncuestaBody({ p }) {
     const estrellas = [1, 2, 3, 4, 5].map((n) => `<button type="button" data-enc-star="${n}" aria-label="${n} ${n === 1 ? 'estrella' : 'estrellas'}" aria-pressed="${encSel.estrellas === n}" class="pressable flex items-center justify-center w-[4.5rem] h-[4.5rem] rounded-ui-lg ${n <= encSel.estrellas ? 'text-primary' : 'text-ink-soft'}">${Icon('star', 'text-6xl', n <= encSel.estrellas)}</button>`).join('');
     return `
@@ -1405,6 +1418,7 @@
           <p class="text-ink-soft">${esc(String(p.descripcion || '') || 'Cuéntanos qué te ha parecido.')}</p>
         </div>
         <div class="flex items-center justify-center gap-2" role="group" aria-label="Valoración">${estrellas}</div>
+        <div class="flex flex-wrap gap-2 justify-center" aria-label="Frases rápidas">${ENC_FRASES.map((f) => `<button type="button" data-enc-chip="${esc(f)}" class="pressable px-4 h-12 rounded-full border-2 border-line bg-surface text-lg ${encSel.texto.indexOf(f) >= 0 ? 'border-primary text-primary font-bold' : 'text-ink'}">${esc(f)}</button>`).join('')}</div>
         <label class="block">
           <span class="block mb-1 text-ink-soft">Comentario (opcional)</span>
           <textarea id="enc-texto" rows="3" maxlength="300" ${loading ? 'disabled' : ''} placeholder="Escribe aquí lo que quieras" class="w-full p-4 rounded-ui-lg bg-surface-alt border-2 border-line text-xl text-ink outline-none focus:border-primary">${esc(encSel.texto)}</textarea>
@@ -1561,11 +1575,11 @@
       batchDone();
       applyServer(res);                          // la verdad del servidor
       persist();
-      if (String(p.efecto).indexOf('mascota:') !== 0) registrarFavorito(alumnoId, p.id);
       setStatus(isDemo() ? 'demo' : 'ok');
       resolve(POST_REDEEM, efectoKey(p.efecto), 'ninguno')(alumnoId, p);
       render();
       toast(`Hecho. ${nombre} ha canjeado ${p.nombre}.`, 'ok');
+      if (efectoKey(p.efecto) === 'ninguno') mostrarDeshacer({ alumnoId, premioId: p.id, texto: `${nombre}: ${p.nombre}` });
     } catch (err) {
       console.error('Canje fallido:', err);
       setStatus('off');
@@ -1577,6 +1591,34 @@
       busy = false;
       pendingPrize = null;
     }
+  }
+
+  /* ---- Deshacer un canje normal durante 30 s (por si se ha tocado sin querer) ---- */
+  let undo = null, undoTimer = 0;
+  function ocultarDeshacer() { clearInterval(undoTimer); undo = null; const b = $('#undo-bar'); if (b) b.remove(); }
+  function mostrarDeshacer(o) {
+    ocultarDeshacer();
+    undo = Object.assign({ hasta: Date.now() + 30000 }, o);
+    const b = document.createElement('div');
+    b.id = 'undo-bar';
+    b.className = 'fixed left-1/2 -translate-x-1/2 bottom-6 z-[80] flex items-center gap-4 pl-5 pr-2 py-2 rounded-full bg-surface border-2 border-line shadow-lg text-lg';
+    b.innerHTML = `<span class="truncate max-w-[22rem]">${esc(o.texto)}</span><button type="button" data-undo class="pressable flex items-center gap-2 px-5 h-14 rounded-full bg-primary text-on-primary font-bold">${Icon('undo', 'text-2xl')}<span>Deshacer <span data-undo-seg class="tabular-nums">30</span></span></button>`;
+    document.body.appendChild(b);
+    undoTimer = setInterval(() => {
+      const seg = Math.ceil((undo.hasta - Date.now()) / 1000);
+      if (seg <= 0) return ocultarDeshacer();
+      const el = $('[data-undo-seg]'); if (el) el.textContent = seg;
+    }, 1000);
+  }
+  async function hacerDeshacer() {
+    if (!undo || busy) return;
+    const u = undo; busy = true;
+    try {
+      const res = await apiPost({ action: 'canje_deshacer', batchId: uid(), alumnoId: u.alumnoId, premioId: u.premioId });
+      applyServer(res); persist(); setStatus(isDemo() ? 'demo' : 'ok'); render();
+      toast('Canje deshecho. Te hemos devuelto los puntos.', 'ok');
+    } catch (err) { toast(`No se ha podido deshacer (${err.message}).`, 'err'); }
+    finally { busy = false; ocultarDeshacer(); }
   }
 
   /* ======================= 5. PERSONALIZAR (optimista + rollback) ======================= */
@@ -1683,6 +1725,8 @@
     ['[data-confirm]', () => doRedeem('confirm')],
     ['[data-cola-entrar]', () => colaAccion('entrar')],
     ['[data-enc-star]', (el) => { encSel.estrellas = Number(el.dataset.encStar); redrawDlg(); }],
+    ['[data-enc-chip]', (el) => { const f = el.dataset.encChip; if (encSel.texto.indexOf(f) < 0) encSel.texto = (encSel.texto ? encSel.texto.replace(/[\s.]+$/, '') + '. ' : '') + f; encSel.texto = encSel.texto.slice(0, 300); redrawDlg(); }],
+    ['[data-undo]', () => hacerDeshacer()],
     ['[data-enc-send]', () => sendEncuesta()],
     ['[data-nombre-pick]', (el) => { nameSel = el.dataset.nombrePick; redrawDlg(); }],
     ['[data-nombre-send]', () => sendNombre()],

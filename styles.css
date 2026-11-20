@@ -237,3 +237,10 @@ html.theme-alumno .border-stone-300 { border-color: #5a554c; }
 html.theme-alumno .bg-stone-200 { background-color: #3a3730; }
 html.theme-alumno .text-stone-700 { color: #d6d0c2; }
 html.theme-alumno .bg-stone-300 { background-color: #6a6458; }
+
+/* Modo calma (profesor): sin animaciones ni transiciones, ni parpadeos */
+html.calma *, html.calma *::before, html.calma *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+
+/* Puntos recien recibidos: aparece suave y se desvanece solo */
+@keyframes ganado-in { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.ganado-chip { animation: ganado-in 6.5s ease-out forwards; }

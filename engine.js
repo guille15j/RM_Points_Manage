@@ -82,6 +82,8 @@ const Engine = (function () {
   const DEFAULTS = {
     dias_clase: '2,4',
     dias_sin_clase: '',
+    pin_profesor: '',
+    modo_calma: '',
     mascota_muerte: 3,
     mascota_muerte_desde: '',
     equilibrio_clases: 4,
@@ -163,6 +165,8 @@ const Engine = (function () {
     diasClase.excl = excl;
     return {
       diasClase,
+      pinProfesor: str(g('pin_profesor')).trim(),
+      modoCalma: /^(true|1|si|sí|yes)$/i.test(str(g('modo_calma')).trim()),
       diasSinClase: Object.keys(excl).sort(),
       mascotaMuerte: Math.max(0, int(g('mascota_muerte'), 3)),
       mascotaMuerteDesde: g('mascota_muerte_desde'),   // opcional: solo cuentan las clases posteriores a esta fecha
@@ -331,6 +335,26 @@ const Engine = (function () {
     }
     return hoy;
   }
+  /** Panel de economia (solo profesor): puntos en circulacion, canjes de la ultima semana y alumnos que acumulan sin gastar. */
+  function economiaClase(led, ctx, alumnosAct, bal, items, hoy) {
+    const n = dayNum(hoy), pr = {};
+    items.forEach((i) => { if (i.tipo === 'premio') pr[str(i.id)] = true; });
+    let canjes7 = 0, gastados7 = 0; const ultimoCanje = {};
+    led.forEach((m) => {
+      if (m.tipo !== 'canje' && m.tipo !== 'deshacer') return;
+      if (!pr[str(m.ref)]) return;
+      const d = dayNum(toDay(m.fecha, ctx) || '1970-01-01'), id = str(m.alumnoId);
+      if (m.tipo === 'canje') ultimoCanje[id] = Math.max(ultimoCanje[id] || 0, d);
+      if (n - d < 7) { const s = m.tipo === 'canje' ? 1 : -1; canjes7 += s; gastados7 += s * Math.abs(Number(m.delta) || 0); }
+    });
+    const baratos = items.filter((i) => i.tipo === 'premio' && isActivo(i) && Number(i.puntos) > 0).map((i) => Number(i.puntos));
+    const minPrecio = baratos.length ? Math.min.apply(null, baratos) : 0;
+    const ahorradores = alumnosAct.map((a) => ({ id: str(a.id), nombre: str(a.nombre), puntos: bal[str(a.id)] || 0, dias: ultimoCanje[str(a.id)] === undefined ? null : n - ultimoCanje[str(a.id)] }))
+      .filter((a) => minPrecio > 0 && a.puntos >= minPrecio * 3 && (a.dias === null || a.dias >= 14))
+      .sort((x, y) => y.puntos - x.puntos).slice(0, 5);
+    return { circulacion: alumnosAct.reduce((s, a) => s + (bal[str(a.id)] || 0), 0), canjes7, gastados7, ahorradores };
+  }
+
   /** Numero de orden de una clase: sirve para rotar la necesidad de la mascota. */
   function ordenClase(day, diasClase) {
     const dow = isoDow(day);
@@ -507,10 +531,14 @@ const Engine = (function () {
     if (md && md > corte) corte = md;
     led.forEach((m) => { if (m.tipo === 'mascota' && (str(m.ref) === 'revivir' || str(m.ref) === 'reset')) { const d = toDay(m.fecha, ctx); if (d > corte) corte = d; } });
     const ef = efectoDe(items);
-    const cuidados = {};
-    led.forEach((m) => { if (m.tipo === 'canje' && accionDe(ef[str(m.ref)])) cuidados[toDay(m.fecha, ctx)] = true; });
+    const cuidados = {}, actividad = {};
+    led.forEach((m) => {
+      const d = toDay(m.fecha, ctx);
+      if (m.tipo === 'canje' && accionDe(ef[str(m.ref)])) cuidados[d] = true;
+      if (m.tipo !== 'tpv' && m.tipo !== 'cola' && m.tipo !== 'mascota' && d) actividad[d] = true;   // sin actividad de nadie ese dia: no hubo clase
+    });
     let perdidas = 0;
-    const dias = clasesHaciaAtras(hoy, c.diasClase, 120).filter((d) => d < hoy && d > corte);
+    const dias = clasesHaciaAtras(hoy, c.diasClase, 120).filter((d) => d < hoy && d > corte && actividad[d]);
     for (let i = 0; i < dias.length; i++) {
       if (cuidados[dias[i]]) break;
       perdidas++;
@@ -599,9 +627,21 @@ const Engine = (function () {
     const estHoy = {};
     led.forEach((m) => { if (m.tipo === 'estrella' && toDay(m.fecha, ctx) === hoy) estHoy[str(m.ref)] = true; });
 
+    // Favorito: premio normal que el alumno ha canjeado 2 o mas veces (el mas repetido). Se calcula aqui para que valga en cualquier dispositivo.
+    const efFav = {}, cuentaFav = {};
+    items.forEach((i) => { if (i.tipo === 'premio' && ['nombre', 'estrella', 'encuesta'].indexOf(str(i.efecto)) < 0 && str(i.efecto).indexOf('mascota:') !== 0) efFav[str(i.id)] = true; });
+    led.forEach((m) => { if ((m.tipo === 'canje' || m.tipo === 'deshacer') && efFav[str(m.ref)]) { const k = str(m.alumnoId); (cuentaFav[k] = cuentaFav[k] || {})[str(m.ref)] = ((cuentaFav[k] || {})[str(m.ref)] || 0) + (m.tipo === 'canje' ? 1 : -1); } });
+    const favoritoDe = (id) => { let best = '', n = 1; Object.keys(cuentaFav[id] || {}).forEach((p) => { if (cuentaFav[id][p] > n) { n = cuentaFav[id][p]; best = p; } }); return best; };
+
+    // Puntos ganados desde el lunes de esta semana (solo sumas; los canjes y el "a cero" no cuentan)
+    const lunesN = dayNum(hoy) - (isoDow(hoy) - 1), semanaPts = {};
+    led.forEach((m) => { const d = Number(m.delta); if (TIPOS_GANADOS.indexOf(m.tipo) >= 0 && d > 0 && dayNum(toDay(m.fecha, ctx) || '1970-01-01') >= lunesN) semanaPts[str(m.alumnoId)] = (semanaPts[str(m.alumnoId)] || 0) + d; });
+
     const alumnos = alumnosAct.map((a) => {
       const id = str(a.id);
       return {
+        puntosSemana: semanaPts[id] || 0,
+        favorito: favoritoDe(id),
         id,
         nombre: str(a.nombre),
         avatar: str(a.avatar) || 'person',
@@ -687,13 +727,15 @@ const Engine = (function () {
       mascota,
       cola: colaTpv(led).map((id) => { const a = alumnosAct.find((x) => str(x.id) === id); return a ? { id, nombre: str(a.nombre) } : null; }).filter(Boolean),
       equilibrio: equilibrioClase(led, ctx, c, alumnosAct),
+      economia: economiaClase(led, ctx, alumnosAct, bal, items, hoy),
       encuestas: resumenEncuestas(led, items, ctx, alumnosAct.length),
       estrellas,
       ayudante: ay ? { id: str(ay.id), nombre: str(ay.nombre) } : null,
       config: {
         rachaHito: c.rachaHito, rachaBonus: c.rachaBonus, ruletaBonus: c.ruletaBonus, avatares: c.avatares, colores: c.colores,
-        diasClase: c.diasClase, diasSinClase: c.diasSinClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos, tpvBloqueo: c.tpvBloqueo
+        diasClase: c.diasClase, diasSinClase: c.diasSinClase, insigniaDias: c.insigniaDias, cosmeticos, estrellaPuntos: c.estrellaPuntos, ayudantePuntos: c.ayudantePuntos, tpvBloqueo: c.tpvBloqueo, pinConfigurado: !!c.pinProfesor, modoCalma: c.modoCalma
       },
+      motor: VERSION,
       ts: ctx.now.toISOString()
     };
   }
@@ -707,7 +749,20 @@ const Engine = (function () {
    * bonificaciones  bonus de racha concedidos: [{alumnoId, racha, bonus}]
    * Lanza Error si algo no es valido (no se debe escribir nada en ese caso).
    */
+  /** Version del motor: el servidor la devuelve en cada respuesta y las paginas avisan si no coincide con la suya. */
+  const VERSION = '2026-11-20.2';
+  /** Acciones solo del profesor: si existe pin_profesor en Config, exigen ese PIN (sin PIN configurado no se exige nada). */
+  const ACCIONES_PROFESOR = { batch: 1, tpv_abrir: 1, dias_sin_clase: 1, estrella_resolver: 1, rol: 1, mascota: 1, carrito_guardar: 1, config_set: 1 };
+  const esAccionProfesor = (p) => !!(p && (ACCIONES_PROFESOR[p.action] || (p.action === 'cola_salir' && p.origen === 'profesor')));
+  function exigePin(t, p) {
+    const pin = readConfig(t.config).pinProfesor;
+    if (!pin || !esAccionProfesor(p)) return;
+    const dado = str(p.pin).trim();
+    if (!dado) throw new Error('PIN_REQUERIDO');
+    if (dado !== pin) throw new Error('PIN_INCORRECTO');
+  }
   function applyAction(t, p, ctx) {
+    exigePin(t, p);
     if (!p || !p.batchId) throw new Error('Falta batchId');
     const led = t.movimientos || [];
     // Idempotencia: un lote ya registrado no se vuelve a escribir
@@ -807,6 +862,10 @@ const Engine = (function () {
     } else if (p.action === 'dias_sin_clase') {
       const dias = (Array.isArray(p.dias) ? p.dias : []).map((d) => str(d).trim()).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
       configSet = { clave: 'dias_sin_clase', valor: dias.filter((d, i) => dias.indexOf(d) === i).sort().join(',') };
+    } else if (p.action === 'config_set') {
+      // Solo claves permitidas (nunca el PIN ni nada sensible)
+      if (p.clave !== 'modo_calma') throw new Error('Clave no permitida');
+      configSet = { clave: 'modo_calma', valor: p.valor ? 'TRUE' : 'FALSE' };
     } else if (p.action === 'cola_entrar' || p.action === 'cola_salir') {
       const id = alumnoValido(p.alumnoId);
       const dentro = colaTpv(cur()).indexOf(id) >= 0;
@@ -851,6 +910,18 @@ const Engine = (function () {
       }
       add(id, 'canje', -coste, nota, 'tpv', str(premio.id));
       if (encuesta) add(id, 'encuesta', 0, encuesta.estrellas + '|' + encuesta.texto, 'tpv', str(premio.id));
+    } else if (p.action === 'canje_deshacer') {
+      // Deshacer un canje normal (sin efecto) hasta 40 s despues de hacerlo; devuelve los puntos. Una vez por canje.
+      const id = alumnoValido(p.alumnoId);
+      const premio = items.filter((i) => i.tipo === 'premio' && str(i.id) === str(p.premioId))[0];
+      if (!premio || ['', 'ninguno'].indexOf(str(premio.efecto)) < 0) throw new Error('Este canje no se puede deshacer');
+      const propios = cur().filter((m) => str(m.alumnoId) === id && str(m.ref) === str(premio.id));
+      const canjes = propios.filter((m) => m.tipo === 'canje'), deshechos = propios.filter((m) => m.tipo === 'deshacer').length;
+      const ultimo = canjes[canjes.length - 1];
+      if (!ultimo || canjes.length <= deshechos) throw new Error('No hay canje que deshacer');
+      if (ctx.now.getTime() - new Date(ultimo.fecha).getTime() > 40000) throw new Error('Ya ha pasado el tiempo para deshacer');
+      add(id, 'deshacer', Math.abs(Number(ultimo.delta)) || Number(premio.puntos) || 0, 'Canje deshecho: ' + str(premio.nombre), 'tpv', str(premio.id));
+      if (c.tpvBloqueo && !tpvAbiertos(cur(), items)[id]) add(id, 'tpv', 0, 'Canje desbloqueado', 'tpv', 'abrir');   // vuelve a estar como antes del canje
     } else if (p.action === 'estrella') {
       const id = alumnoValido(p.alumnoId);
       const para = alumnoValido(p.paraId);
@@ -907,5 +978,5 @@ const Engine = (function () {
     return { rows, patches, bonificaciones, duplicado: false, configSet };
   }
 
-  return { computeState, applyAction, COLORES, AVATARES, COSMETICOS, DEFAULTS };
+  return { computeState, applyAction, exigePin, esAccionProfesor, VERSION, COLORES, AVATARES, COSMETICOS, DEFAULTS };
 })();
